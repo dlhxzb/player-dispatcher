@@ -1,0 +1,8 @@
+[package]
+name = "map-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1.68"
+crossbeam-skiplist = "0.1"

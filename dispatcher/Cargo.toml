@@ -1,0 +1,17 @@
+[package]
+name = "dispatcher"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+async-trait = "0.1.68"
+crossbeam-skiplist = "0.1"
+futures = "0.3"
+hashbrown = "0.13"
+tokio = { version = "1.28", features = ["macros", "rt-multi-thread", "sync"] }
+tonic = "0.9"
+prost = "0.11"
+
+[build-dependencies]
+tonic-build = "0.9"

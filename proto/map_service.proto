@@ -1,0 +1,8 @@
+syntax = "proto3";
+package map_service;
+import "google/protobuf/empty.proto";
+import "game_interface.proto";
+
+service MapService {
+    rpc Login (game_interface.PlayerInfo) returns (google.protobuf.Empty);
+}

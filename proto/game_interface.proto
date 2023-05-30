@@ -1,0 +1,14 @@
+syntax = "proto3";
+package game_interface;
+import "google/protobuf/empty.proto";
+
+message PlayerInfo {
+   uint64 id = 1;
+   uint64 x = 2;
+   uint64 y = 3;
+   uint64 money = 4;
+}
+
+service GameInterface {
+    rpc Login (PlayerInfo) returns (google.protobuf.Empty);
+}
