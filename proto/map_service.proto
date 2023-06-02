@@ -5,4 +5,11 @@ import "game_interface.proto";
 
 service MapService {
     rpc Login (game_interface.PlayerInfo) returns (google.protobuf.Empty);
+    rpc ExportPlayer (ExportMsg) returns (google.protobuf.Empty);
+    rpc ImportPlayer (game_interface.PlayerInfo) returns (google.protobuf.Empty);
+}
+
+message ExportMsg {
+    uint64 play_id = 1;
+    string rpc_addr = 2;
 }
