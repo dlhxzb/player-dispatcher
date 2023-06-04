@@ -1,15 +1,40 @@
 syntax = "proto3";
 package map_service;
 import "google/protobuf/empty.proto";
-import "game_interface.proto";
+import "game_service.proto";
 
 service MapService {
-    rpc Login (game_interface.PlayerInfo) returns (google.protobuf.Empty);
-    rpc ExportPlayer (ExportMsg) returns (google.protobuf.Empty);
-    rpc ImportPlayer (game_interface.PlayerInfo) returns (google.protobuf.Empty);
+    rpc ExportPlayer (ExportRequest) returns (google.protobuf.Empty);
+    rpc ImportPlayer (game_service.PlayerInfo) returns (google.protobuf.Empty);
+    rpc GetHeaviestZonePlayers (google.protobuf.Empty) returns (ZonePlayersReply);
+    rpc GetNPlayers (GetPlayersRequest) returns (GetPlayersReply);
+    rpc ConnectServer (ConnectRequest) returns (google.protobuf.Empty);
+    rpc DisconnectServer (ConnectRequest) returns (google.protobuf.Empty);
+    rpc GetOverhead (google.protobuf.Empty) returns (OverheadReply);
 }
 
-message ExportMsg {
-    uint64 play_id = 1;
-    string rpc_addr = 2;
+message ExportRequest {
+    uint64 player_id = 1;
+    string addr = 2;
+}
+
+message ZonePlayersReply {
+    uint64 zone_id = 1;
+    repeated uint64 player_ids = 2;
+}
+
+message GetPlayersRequest {
+    uint64 n = 1;
+}
+
+message GetPlayersReply {
+    repeated uint64 player_ids = 1;
+}
+
+message ConnectRequest {
+    string addr = 1;
+}
+
+message OverheadReply {
+    uint64 count = 1;
 }

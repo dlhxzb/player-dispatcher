@@ -1,41 +1,39 @@
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use crossbeam_skiplist::{SkipMap, SkipSet};
+use crossbeam_skiplist::SkipMap;
 use ert::prelude::*;
-use futures::future::join_all;
 use futures::stream::{self, StreamExt};
-use hashbrown::HashMap;
-use tokio::sync::RwLock;
 use tonic::transport::{Channel, Server};
 use tonic::{async_trait, Request, Response, Status};
+use tracing::error;
 
-// gRPC
-use game_interface::game_interface_server::GameInterface;
-use game_interface::PlayerInfo;
-use map_service::map_service_client::MapServiceClient;
+use crate::grpc::game_service::game_service_client::GameServiceClient;
+use crate::grpc::map_service::map_service_client::MapServiceClient;
+use crate::grpc::map_service::{
+    ConnectRequest, ExportRequest, GetPlayersReply, GetPlayersRequest, ZonePlayersReply,
+};
+use crate::util::*;
 
-pub mod map_service {
-    tonic::include_proto!("map_service");
-}
+/// # 地图分割方法
+/// 将地图分割为4象限，每个象限递归向下划分4象限。可以得到一个类似四叉树的结构。
+/// ZoneId表示四叉树节点编号，从高位到低位表示根节点到叶子结点。
+/// 例如：`12`代表世界地图4象限中第`1`象限中再划分四象限中的`2`象限
+/// 最多划分MAX_ZONE_DEPTH层，ZoneId位数与节点所处深度相等。
 
-pub mod game_interface {
-    tonic::include_proto!("game_interface");
-}
-
-type ServerCli = MapServiceClient<tonic::transport::Channel>;
-type PlayerId = u64;
-type ZoneId = u64;
+pub type PlayerId = u64;
+pub type ZoneId = u64;
+pub type ServerId = u64;
 type ZoneSubId = u64;
-type RPCResult<T> = Result<Response<T>, Status>;
+
 // 世界地图尺寸
-const WORLD_X_MAX: u64 = 1 << 16;
-const WORLD_Y_MAX: u64 = 1 << 16;
-// Zone最大分割深度为10，可划分1024*1024个zone，最小层zone(0,0) id = 1,111,111,111
-const ZONE_DEPTH: u32 = 10;
+pub const WORLD_X_MAX: u64 = 1 << 16;
+pub const WORLD_Y_MAX: u64 = 1 << 16;
+// Zone最大深度为10，可划分512*512个zone，最小层zone(0,0) id = 1,111,111,111
+pub const MAX_ZONE_DEPTH: u32 = 10;
 // 服务器最大用户数，触发扩容
-const MAX_PLAYER: u64 = 1000;
+pub const MAX_PLAYER: u64 = 1000;
 // 服务器最小用户数，触发缩容
 const MIN_PLAYER: u64 = MAX_PLAYER / 4;
 
@@ -54,205 +52,128 @@ pub struct Player {
     pub money: usize,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct ServerId {
-    zone_id: ZoneId,
-    zone_sub_id: ZoneSubId, // ZONE_DEPTH层的Zone可有多台服务器，其它层该值为0
-}
-
 #[derive(Clone)]
-struct ServerInfo {
-    server_id: ServerId,
-    cli: ServerCli,
-    status: ServerStatus,
-    overhead: usize,
+pub struct ServerInfo {
+    pub server_id: ServerId,
+    pub zones: Vec<ZoneId>,
+    pub map_cli: MapServiceClient<Channel>,
+    pub game_cli: GameServiceClient<Channel>,
+    pub status: ServerStatus,
+    pub overhead: usize,
+    pub addr: String,
 }
 
-const WORLD_ZONE_ID: ZoneId = 0;
+// Bottom（MAX_ZONE_DEPTH）层可有多个server，其它层只有一个
+pub enum ZoneServers {
+    Bottom(SkipMap<ServerId, Arc<ServerInfo>>),
+    Parent(Arc<ServerInfo>),
+}
 
+/// # 并发读写保证：
+/// ## zone_server_map
+/// * 只有一个线程在增删server；
+/// * 删除前通过ServerStatus::Closing来拒绝新增用户；
+/// * 删除时用户已清零，没有并发访问了
+/// ## player_map
+/// * API以用户为单位串行
 pub struct Dispatcher {
-    zone_server_map: SkipMap<ZoneId, SkipMap<ZoneSubId, ServerInfo>>, // 快速定位Zone的server
-    player_map: SkipMap<PlayerId, ServerId>,                          // 快速定位Player所属server
+    pub zone_server_map: SkipMap<ZoneId, ZoneServers>, // 通过Zone定位server
+    pub player_map: Arc<SkipMap<PlayerId, ServerId>>,  // 定位Player所属server
 }
 
 impl Dispatcher {
     pub async fn new() -> Result<Self> {
-        let server_id = ServerId {
-            zone_id: WORLD_ZONE_ID,
-            zone_sub_id: 0,
-        };
+        let server_id = gen_server_id();
         let addr = start_server().await;
-        let world_server_cli = MapServiceClient::connect(addr).await?;
+        // TODO: 将zone等配置传递给server
+        let map_cli = MapServiceClient::connect(addr.clone()).await?;
+        let game_cli = GameServiceClient::connect(addr.clone()).await?;
 
         let zone_server_map = SkipMap::new();
         zone_server_map.insert(
-            WORLD_ZONE_ID,
-            ServerInfo {
-                server_id,
-                cli: world_server_cli.into(),
-                status: ServerStatus::Working,
-                overhead: 0,
-            },
+            ROOT_ZONE_ID,
+            ZoneServers::Parent(
+                ServerInfo {
+                    server_id,
+                    zones: vec![ROOT_ZONE_ID],
+                    map_cli,
+                    game_cli,
+                    status: ServerStatus::Working,
+                    overhead: 0,
+                    addr,
+                }
+                .into(),
+            ),
         );
 
         Ok(Self {
             zone_server_map: SkipMap::new(),
-            player_map: SkipMap::new(),
+            player_map: SkipMap::new().into(),
         })
     }
 
-    async fn login_inner(&self, player: PlayerInfo) -> Result<()> {
-        anyhow::ensure!(
-            player.x < WORLD_X_MAX && player.y < WORLD_Y_MAX,
-            format!("{:?} out of map range", player)
-        );
-        anyhow::ensure!(
-            !self.player_map.contains_key(&player.id),
-            format!("{} had logged in", player.id)
-        );
-
-        let zone_id = xy_to_zone(player.x, player.y);
-        let mut server_info = self.get_zone_server(zone_id);
-        let player_id = player.id;
-        server_info.cli.login(player).await?;
-        self.player_map.insert(player_id, server_info.server_id);
-
-        Ok(())
-    }
-
-    // 如果有多个，返回Working的，overhead最低的
-    fn get_zone_server(&self, mut id: ZoneId) -> ServerInfo {
+    // 从下层向上找Working的server。对于bottom zone，如果有多个选overhead最低的
+    pub fn get_best_server_of_zone(&self, mut zone_id: ZoneId) -> Arc<ServerInfo> {
         loop {
-            let info = self.zone_server_map.get(&id).map(|zone_entry| {
-                zone_entry
-                    .value()
-                    .iter()
-                    .filter(|entry| entry.value().status == ServerStatus::Working)
-                    .min_by_key(|entry| entry.value().overhead)
-                    .expect(&format!("Empty value for {id} in zone_server_map"))
-                    .value()
-                    .clone()
-            });
-            if let Some(info) = info {
-                return info;
+            let server = self
+                .zone_server_map
+                .get(&zone_id)
+                .map(|zone_entry| match zone_entry.value() {
+                    ZoneServers::Parent(server) => {
+                        if server.status == ServerStatus::Working {
+                            Some(server.clone())
+                        } else {
+                            None
+                        }
+                    }
+                    ZoneServers::Bottom(map) => map
+                        .iter()
+                        .filter(|entry| entry.value().status == ServerStatus::Working)
+                        .min_by_key(|entry| entry.value().overhead)
+                        .map(|entry| entry.value().clone()),
+                })
+                .flatten();
+            if let Some(server) = server {
+                return server;
             }
-            assert_eq!(id, 0, "No root map server found");
-            id /= 10;
+            assert_eq!(zone_id, 0, "No root map server found");
+            zone_id /= 10;
         }
     }
 
-    // server中用户超过上限，触发扩容。最底层zone无法分割，划分一半用户到新server。
-    // 上层zone可分割，找出用户最多的zone，划分到新server
-    async fn devide_server(&self, server: ServerInfo) -> Result<()> {
-        Ok(())
-    }
-
-    // 分割zone扩容。将server中的某一个zone用户移动到新server
-    async fn devide_server_zone(&self, from: ServerInfo, zone_id: ZoneId) -> Result<()> {
-        // self.player_map.iter().
-        Ok(())
-    }
-
-    async fn add_server_for_zone(&self, zone_id: ZoneId) -> Result<ServerInfo> {
-        let addr = start_server().await;
-        let cli = MapServiceClient::connect(addr).await?;
-        if zone_depth(zone_id) == ZONE_DEPTH {
-            // 最底层zone无法分割，获取该zone的所有server
+    // 从下层向上找包含指定Zone的 !Closed server
+    pub fn get_servers_of_zone(&self, mut zone_id: ZoneId) -> Vec<Arc<ServerInfo>> {
+        loop {
             let servers = self
                 .zone_server_map
                 .get(&zone_id)
-                .map(|entry| {
-                    entry
-                        .value()
-                        .iter()
-                        .map(|entry| entry.value().clone())
-                        .collect::<Vec<_>>()
+                .map(|zone_entry| match zone_entry.value() {
+                    ZoneServers::Parent(server) => {
+                        if server.status == ServerStatus::Closed {
+                            None
+                        } else {
+                            Some(vec![server.clone()])
+                        }
+                    }
+                    ZoneServers::Bottom(map) => {
+                        let servers: Vec<_> = map
+                            .iter()
+                            .filter(|entry| entry.value().status != ServerStatus::Closed)
+                            .map(|entry| entry.value().clone())
+                            .collect();
+                        if servers.is_empty() {
+                            None
+                        } else {
+                            Some(servers)
+                        }
+                    }
                 })
-                .unwrap();
-            let mut zone_sub_id = 0;
-            // 跳表会按从小到大排序，找到空缺的作为新server的zone_sub_id
-            for server in servers {
-                if zone_sub_id != server.server_id.zone_sub_id {
-                    break;
-                }
-                zone_sub_id += 1;
+                .flatten();
+            if let Some(servers) = servers {
+                return servers;
             }
-            let server_id = ServerId {
-                zone_id,
-                zone_sub_id,
-            };
-            let info = ServerInfo {
-                server_id,
-                cli,
-                status: ServerStatus::Working,
-                overhead: 0,
-            };
-            self.zone_server_map.get(&zone_id).map(|entry| {
-                let map = entry.value();
-                map.insert(zone_sub_id, info);
-            });
-            // TODO: 随机分割用户
-        } else {
+            assert_eq!(zone_id, 0, "No root map server found");
+            zone_id /= 10;
         }
-        todo!()
     }
-}
-
-#[async_trait]
-impl GameInterface for Arc<Dispatcher> {
-    async fn login(&self, player: Request<PlayerInfo>) -> RPCResult<()> {
-        let player = player.into_inner();
-        let player_id = player.id;
-        let server = self.clone();
-        async move { server.login_inner(player).await }
-            .via_g(player_id)
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-        Ok(Response::new(()))
-    }
-}
-
-#[inline]
-fn xy_to_zone(mut x: u64, mut y: u64) -> u64 {
-    let mut id = 0;
-    let mut length = WORLD_X_MAX;
-    let mut height = WORLD_Y_MAX;
-    for _ in 0..ZONE_DEPTH {
-        length /= 2;
-        height /= 2;
-        //      2 4
-        // 原点 1 3
-        let pos = if x < length {
-            if y < height {
-                1
-            } else {
-                y -= height;
-                2
-            }
-        } else {
-            x -= length;
-            if y < height {
-                3
-            } else {
-                y -= height;
-                4
-            }
-        };
-        id = id * 10 + pos;
-    }
-    id
-}
-
-#[inline]
-fn zone_depth(id: ZoneId) -> u32 {
-    if id > 0 {
-        id.ilog10() + 1
-    } else {
-        0
-    }
-}
-
-async fn start_server() -> String {
-    // TODO: 启动server
-    "http://[::1]:50051".to_string()
 }

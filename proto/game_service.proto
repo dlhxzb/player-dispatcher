@@ -1,0 +1,33 @@
+syntax = "proto3";
+package game_service;
+import "google/protobuf/empty.proto";
+
+service GameService {
+    rpc Login (PlayerInfo) returns (google.protobuf.Empty);
+    rpc Aoe (Coord) returns (google.protobuf.Empty);
+    rpc Walking (WalkingRequest) returns (Coord);
+}
+
+message PlayerInfo {
+   uint64 id = 1;
+   uint64 x = 2;
+   uint64 y = 3;
+   uint64 money = 4;
+}
+
+message Coord {
+   uint64 x = 1;
+   uint64 y = 2;
+}
+
+enum Direction {
+  Stay = 0;
+  FORWARD = 1;
+  BACKWORD = 2;
+}
+
+message WalkingRequest {
+   Coord current_coord = 1;
+   Direction x_dir = 2;
+   Direction y_dir = 3;
+}
