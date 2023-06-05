@@ -8,8 +8,8 @@
   - game API impl
     - [x] login
     - [ ] logout
-    - [ ] aoe  `Doing`
-    - [ ] moving
+    - [x] aoe
+    - [ ] moving  `Doing`
   - 内部机能
     - [ ] overload monitor，监视各个地图服务器负载，发起扩缩容
     - [x] 主导扩容
@@ -24,6 +24,7 @@
     - [ ] 扩容：导出一半用户到指定server
     - [ ] 缩容：导出全部用户到指定server
 - 其它
+  - [ ] config
   - [ ] test
   - [ ] example
   - [ ] benchmark

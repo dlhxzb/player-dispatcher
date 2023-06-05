@@ -44,6 +44,12 @@ pub struct ServerInfoInner {
     pub addr: String,
 }
 
+impl PartialEq for ServerInfo {
+    fn eq(&self, target: &Self) -> bool {
+        self.server_id == target.server_id
+    }
+}
+
 // Bottom（MAX_ZONE_DEPTH）层可有多个server，其它层只有一个
 pub enum ZoneServers {
     Bottom(SkipMap<ServerId, ServerInfo>),

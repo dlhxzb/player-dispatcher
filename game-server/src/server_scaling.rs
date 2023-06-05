@@ -81,6 +81,7 @@ impl ServerScaling for Dispatcher {
                         .export_player(ExportRequest {
                             player_id,
                             addr: target.addr.clone(),
+                            coord: None,
                         })
                         .await
                     {

@@ -5,8 +5,8 @@ import "google/protobuf/empty.proto";
 service GameService {
     rpc Login (PlayerInfo) returns (google.protobuf.Empty);
     rpc Logout (PlayerIdRequest) returns (google.protobuf.Empty);
-    rpc Aoe (Coord) returns (google.protobuf.Empty);
-    rpc Moving (MovingRequest) returns (Coord);
+    rpc Aoe (CoordRequest) returns (google.protobuf.Empty);
+    rpc Moving (CoordRequest) returns (Coord);
     rpc Query (PlayerIdRequest) returns (PlayerInfo);
 }
 
@@ -18,7 +18,7 @@ message PlayerInfo {
 }
 
 message PlayerIdRequest {
-    uint64 player_id = 1;
+    uint64 id = 1;
 }
 
 message Coord {
@@ -26,7 +26,7 @@ message Coord {
    uint64 y = 2;
 }
 
-message MovingRequest {
+message CoordRequest {
    uint64 id = 1;
    Coord target = 2;
 }

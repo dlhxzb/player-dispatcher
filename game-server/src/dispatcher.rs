@@ -6,6 +6,7 @@ use proto::map_service::map_service_client::MapServiceClient;
 
 use anyhow::Result;
 use crossbeam_skiplist::SkipMap;
+use tonic::Status;
 
 use std::ops::Deref;
 use std::sync::Arc;
@@ -142,6 +143,22 @@ impl Dispatcher {
             }
             assert_eq!(zone_id, 0, "No root map server found");
             zone_id /= 10;
+        }
+    }
+
+    pub fn check_player_exist(&self, player_id: u64) -> std::result::Result<(), Status> {
+        if self.player_map.contains_key(&player_id) {
+            Ok(())
+        } else {
+            Err(Status::permission_denied("Please login first"))
+        }
+    }
+
+    pub fn check_xy(&self, x: u64, y: u64) -> Result<(), Status> {
+        if x >= WORLD_X_MAX || y >= WORLD_Y_MAX {
+            Err(Status::out_of_range(format!("x:{x} y:{y}")))
+        } else {
+            Ok(())
         }
     }
 }

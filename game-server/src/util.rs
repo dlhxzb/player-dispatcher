@@ -1,8 +1,5 @@
 use crate::dispatcher::{MAX_ZONE_DEPTH, WORLD_X_MAX, WORLD_Y_MAX};
-use crate::game_impl::RPCResult;
-use crate::ZoneId;
-
-use tonic::{Response, Status};
+use crate::{ServerInfo, ZoneId};
 
 pub const ROOT_ZONE_ID: u64 = 1;
 // zone范围均为左闭右开
@@ -36,17 +33,20 @@ pub fn xy_to_zone(mut x: u64, mut y: u64) -> u64 {
     id
 }
 
+// 判断一节点是否在另一节点的父路径上
+pub fn is_parent(zone: ZoneId, parent: ZoneId) -> bool {
+    let len1 = zone.ilog10();
+    let len2 = parent.ilog10();
+    len1 >= len2 && zone / 10_u64.pow(len1 - len2) == parent
+}
+
+pub fn server_contains_zone(server: &ServerInfo, zone: ZoneId) -> bool {
+    server.zones.iter().any(|p| is_parent(zone, *p))
+}
+
 #[inline]
 pub fn zone_depth(id: ZoneId) -> u32 {
     id.ilog10() + 1
-}
-
-pub fn check_xy(x: u64, y: u64) -> RPCResult<()> {
-    if x >= WORLD_X_MAX || y >= WORLD_Y_MAX {
-        Err(Status::out_of_range(format!("x:{x} y:{y}")))
-    } else {
-        Ok(Response::new(()))
-    }
 }
 
 pub fn gen_server_id() -> u64 {

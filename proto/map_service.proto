@@ -16,6 +16,7 @@ service MapService {
 message ExportRequest {
     uint64 player_id = 1;
     string addr = 2;
+    game_service.Coord coord = 3; 
 }
 
 message ZonePlayersReply {
