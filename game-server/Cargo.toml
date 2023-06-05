@@ -1,5 +1,5 @@
 [package]
-name = "dispatcher"
+name = "game-server"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,11 +8,10 @@ anyhow = "1.0"
 crossbeam-skiplist = "0.1"
 ert = { git = "https://github.com/dlhxzb/ert.git", branch = "chase-tokio-1" }
 futures = "0.3"
-prost = "0.11"
 tokio = { version = "1.28", features = ["macros", "rt-multi-thread"] }
 tonic = "0.9"
 tracing = "0.1.37"
 tracing-subscriber = "0.3.17"
 
-[build-dependencies]
-tonic-build = "0.9"
+proto = { path = "../proto" }
+

@@ -1,3 +1,36 @@
+# TODO list
+- 设计
+  - [x] 地图动态划分设计
+  - [ ] game proto 设计  `Doing`
+  - [ ] map proto 设计  `Doing`
+  - [ ] 并发安全设计  `Doing`
+- dispatcher: 
+  - game API impl
+    - [x] login
+    - [ ] logout
+    - [ ] aoe  `Doing`
+    - [ ] moving
+  - 内部机能
+    - [ ] overload monitor，监视各个地图服务器负载，发起扩缩容
+    - [x] 主导扩容
+    - [ ] 主导缩容
+- map-server
+  - game API impl
+    - [ ] login
+    - [ ] logout
+    - [ ] aoe：为查找区域内用户，要考虑将地图划分为小格，缓存小格内用户
+    - [ ] moving
+  - map API impl
+    - [ ] 扩容：导出一半用户到指定server
+    - [ ] 缩容：导出全部用户到指定server
+- 其它
+  - [ ] test
+  - [ ] example
+  - [ ] benchmark
+  - [ ] CI（包括发布docker image）
+  - [ ] 扩容时在程序内启动image
+  - [ ] 将边缘区域用户同步到其它服务器，提高用户在服务器间移动的性能
+
 # 架构
 服务分两层：
 * dispatcher：分发服务器。管理所有地图服务器，后台线程监视各服务器负载，发起扩缩容请求。它有两个缓存：
@@ -24,7 +57,7 @@
 * dispatcher根据范围坐标计算分到一台或几台地图服务器
 * 各地图服务器处理aoe
 
-### walking
+### moving
 * dispatcher从缓存中取出用户当前zone
 * dispatcher计算移动目标zone，
   * 如果不是当前zone：

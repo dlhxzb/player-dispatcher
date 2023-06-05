@@ -1,5 +1,6 @@
 [workspace]
 members = [
-  "dispatcher",
+  "game-server",
   "map-server",
+  "proto",
 ]

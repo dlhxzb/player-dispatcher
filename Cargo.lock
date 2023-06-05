@@ -135,22 +135,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dispatcher"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "crossbeam-skiplist",
- "ert",
- "futures",
- "prost",
- "tokio",
- "tonic",
- "tonic-build",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "either"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -297,6 +281,21 @@ dependencies = [
  "pin-project-lite",
  "pin-utils",
  "slab",
+]
+
+[[package]]
+name = "game-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crossbeam-skiplist",
+ "ert",
+ "futures",
+ "proto",
+ "tokio",
+ "tonic",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -737,6 +736,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "213622a1460818959ac1181aaeb2dc9c7f63df720db7d788b3e24eacd1983e13"
 dependencies = [
  "prost",
+]
+
+[[package]]
+name = "proto"
+version = "0.1.0"
+dependencies = [
+ "prost",
+ "tonic",
+ "tonic-build",
 ]
 
 [[package]]

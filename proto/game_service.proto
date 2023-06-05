@@ -4,8 +4,10 @@ import "google/protobuf/empty.proto";
 
 service GameService {
     rpc Login (PlayerInfo) returns (google.protobuf.Empty);
+    rpc Logout (PlayerIdRequest) returns (google.protobuf.Empty);
     rpc Aoe (Coord) returns (google.protobuf.Empty);
-    rpc Walking (WalkingRequest) returns (Coord);
+    rpc Moving (MovingRequest) returns (Coord);
+    rpc Query (PlayerIdRequest) returns (PlayerInfo);
 }
 
 message PlayerInfo {
@@ -15,19 +17,16 @@ message PlayerInfo {
    uint64 money = 4;
 }
 
+message PlayerIdRequest {
+    uint64 player_id = 1;
+}
+
 message Coord {
    uint64 x = 1;
    uint64 y = 2;
 }
 
-enum Direction {
-  Stay = 0;
-  FORWARD = 1;
-  BACKWORD = 2;
-}
-
-message WalkingRequest {
-   Coord current_coord = 1;
-   Direction x_dir = 2;
-   Direction y_dir = 3;
+message MovingRequest {
+   uint64 id = 1;
+   Coord target = 2;
 }

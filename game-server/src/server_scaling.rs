@@ -1,17 +1,22 @@
-use anyhow::{Context, Result};
+use crate::dispatcher::{Dispatcher, MAX_ZONE_DEPTH};
+use crate::util::*;
+use crate::{PlayerId, ServerInfo, ZoneId, ZoneServers};
+
+use proto::map_service::{
+    ConnectRequest, ExportRequest, GetPlayersReply, GetPlayersRequest, ZonePlayersReply,
+};
+
+use anyhow::Result;
 use crossbeam_skiplist::SkipMap;
 use ert::prelude::RunVia;
 use futures::StreamExt;
 use tonic::async_trait;
 use tracing::error;
 
-use crate::dispatcher::{
-    Dispatcher, PlayerId, ServerInfo, ZoneId, ZoneServers, MAX_PLAYER, MAX_ZONE_DEPTH,
-};
-use crate::grpc::map_service::{
-    ConnectRequest, ExportRequest, GetPlayersReply, GetPlayersRequest, ZonePlayersReply,
-};
-use crate::util::zone_depth;
+// 服务器最大用户数，触发扩容
+pub const MAX_PLAYER: u64 = 1000;
+// 服务器最小用户数，触发缩容
+pub const MIN_PLAYER: u64 = MAX_PLAYER / 4;
 
 #[async_trait]
 pub trait ServerScaling {
@@ -19,7 +24,7 @@ pub trait ServerScaling {
     async fn expand_overload_server(&self, server: &ServerInfo) -> Result<()> {
         let hd = tokio::spawn(Self::start_server());
         let (players, zone_id) = self.divide_zone_from_server(&server).await?;
-        let mut new_server = hd.await??;
+        let new_server = hd.await??;
         self.bind_server(&new_server, zone_id).await?;
         self.transfer_players(&server, &new_server, &players).await
     }
@@ -43,7 +48,7 @@ pub trait ServerScaling {
 /// API级别不能保证并发原子，应避免多个线程同时调用，仅在monitor线程中使用
 #[async_trait]
 impl ServerScaling for Dispatcher {
-    async fn reduce_idle_server(&self, server: &ServerInfo) -> Result<()> {
+    async fn reduce_idle_server(&self, _server: &ServerInfo) -> Result<()> {
         todo!()
     }
     async fn get_overload_server(&self) -> Result<Option<ServerInfo>> {
@@ -69,14 +74,19 @@ impl ServerScaling for Dispatcher {
         futures::stream::iter(players)
             .for_each_concurrent(None, |&player_id| {
                 let mut cli = source_server.map_cli.clone();
-                let addr = target_server.addr.clone();
-                let server_id = target_server.server_id;
-                let player_map = self.player_map.clone();
+                let target = target_server.clone();
+                let dp = self.clone();
                 async move {
-                    if let Err(e) = cli.export_player(ExportRequest { player_id, addr }).await {
+                    if let Err(e) = cli
+                        .export_player(ExportRequest {
+                            player_id,
+                            addr: target.addr.clone(),
+                        })
+                        .await
+                    {
                         error!(?e, "transfer_player {player_id} failed");
                     } else {
-                        player_map.insert(player_id, server_id);
+                        dp.player_map.insert(player_id, target);
                     }
                 }
                 .via_g(player_id)
@@ -95,7 +105,7 @@ impl ServerScaling for Dispatcher {
     async fn start_server() -> Result<ServerInfo> {
         todo!()
     }
-    async fn stop_server(addr: &str) -> Result<()> {
+    async fn stop_server(_addr: &str) -> Result<()> {
         todo!()
     }
 

@@ -1,15 +1,14 @@
-use std::sync::Arc;
+mod dispatcher;
+mod game_impl;
+mod server_scaling;
+mod util;
+
+pub use game_server::*;
+
+use proto::game_service::game_service_server::GameServiceServer;
 
 use tonic::transport::Server;
 use tracing::info;
-
-use crate::dispatcher::Dispatcher;
-use crate::grpc::game_service::game_service_server::GameServiceServer;
-
-mod dispatcher;
-mod grpc;
-mod server_scaling;
-mod util;
 
 #[tokio::main]
 async fn main() {
@@ -21,7 +20,7 @@ async fn main() {
     let addr = "[::1]:50051".parse().unwrap();
     let dispatcher = dispatcher::Dispatcher::new().await.unwrap();
     Server::builder()
-        .add_service(GameServiceServer::new(Arc::new(dispatcher)))
+        .add_service(GameServiceServer::new(dispatcher))
         .serve(addr)
         .await
         .unwrap();

@@ -1,28 +1,17 @@
-use std::sync::Arc;
+use crate::dispatcher::Dispatcher;
+use crate::util::*;
 
-use anyhow::Error;
+use proto::game_service::game_service_server::GameService;
+use proto::game_service::{Coord, MovingRequest, PlayerIdRequest, PlayerInfo};
+
 use ert::prelude::RunVia;
-use tonic::transport::Channel;
 use tonic::{async_trait, Request, Response, Status};
 use tracing::error;
-
-use game_service::game_service_server::GameService;
-use game_service::{Coord, PlayerInfo, WalkingRequest};
-
-pub mod map_service {
-    tonic::include_proto!("map_service");
-}
-pub mod game_service {
-    tonic::include_proto!("game_service");
-}
-
-use crate::dispatcher::{Dispatcher, WORLD_X_MAX, WORLD_Y_MAX};
-use crate::util::*;
 
 pub type RPCResult<T> = Result<Response<T>, Status>;
 
 #[async_trait]
-impl GameService for Arc<Dispatcher> {
+impl GameService for Dispatcher {
     async fn login(&self, player: Request<PlayerInfo>) -> RPCResult<()> {
         let player = player.into_inner();
         let player_id = player.id;
@@ -36,7 +25,7 @@ impl GameService for Arc<Dispatcher> {
             let server = dp.get_best_server_of_zone(zone_id);
 
             server.game_cli.clone().login(player).await?;
-            dp.player_map.insert(player_id, server.server_id);
+            dp.player_map.insert(player_id, server);
             Ok(Response::new(()))
         }
         .via_g(player_id)
@@ -67,7 +56,7 @@ impl GameService for Arc<Dispatcher> {
             .flatten()
             .collect::<HashMap<_, _>>()
             .into_values()
-            .map(|mut server| {
+            .map(|server| {
                 let coord = coord.clone();
                 async move {
                     if let Err(e) = server.game_cli.clone().aoe(coord).await {
@@ -80,7 +69,15 @@ impl GameService for Arc<Dispatcher> {
         Ok(Response::new(()))
     }
 
-    async fn walking(&self, step: Request<WalkingRequest>) -> RPCResult<Coord> {
+    async fn moving(&self, _step: Request<MovingRequest>) -> RPCResult<Coord> {
+        todo!()
+    }
+
+    async fn query(&self, _player_id: Request<PlayerIdRequest>) -> RPCResult<PlayerInfo> {
+        todo!()
+    }
+
+    async fn logout(&self, _player_id: Request<PlayerIdRequest>) -> RPCResult<()> {
         todo!()
     }
 }
