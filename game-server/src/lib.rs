@@ -3,8 +3,8 @@ pub mod game_impl;
 pub mod server_scaling;
 pub mod util;
 
-use proto::game_service::game_service_client::GameServiceClient;
-use proto::map_service::map_service_client::MapServiceClient;
+use common::proto::game_service::game_service_client::GameServiceClient;
+use common::proto::map_service::map_service_client::MapServiceClient;
 
 use crossbeam_skiplist::SkipMap;
 use tonic::transport::Channel;
@@ -14,13 +14,12 @@ use std::sync::Arc;
 
 pub type PlayerId = u64;
 pub type ZoneId = u64;
-pub type ServerId = u64;
+pub type ServerId = u32;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ServerStatus {
     Working,
     Closing,
-    Closed,
 }
 #[derive(Clone)]
 pub struct ServerInfo {
@@ -50,8 +49,25 @@ impl PartialEq for ServerInfo {
     }
 }
 
-// Bottom（MAX_ZONE_DEPTH）层可有多个server，其它层只有一个
-pub enum ZoneServers {
-    Bottom(SkipMap<ServerId, ServerInfo>),
-    Parent(ServerInfo),
+impl ServerInfo {
+    pub fn contains_zone(&self, zone_id: ZoneId) -> bool {
+        self.zones.iter().any(|id| &zone_id == id)
+    }
+}
+
+// 一个叶子节点除了有自身服务器，可能还有一台正在给起导入用户的服务器。除了login，其它请求要两个都发送
+#[derive(Clone)]
+pub struct ZoneServers {
+    pub server: ServerInfo,
+    pub exporting_server: Option<ServerInfo>,
+}
+
+impl ZoneServers {
+    pub fn into_vec(self) -> Vec<ServerInfo> {
+        if let Some(export) = self.exporting_server {
+            vec![self.server, export]
+        } else {
+            vec![self.server]
+        }
+    }
 }

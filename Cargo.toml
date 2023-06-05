@@ -2,5 +2,5 @@
 members = [
   "game-server",
   "map-server",
-  "proto",
+  "common",
 ]

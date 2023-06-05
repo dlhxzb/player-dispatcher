@@ -1,32 +1,35 @@
 use crate::dispatcher::Dispatcher;
 use crate::util::*;
+use crate::ZoneServers;
 
-use proto::game_service::game_service_server::GameService;
-use proto::game_service::{Coord, CoordRequest, PlayerIdRequest, PlayerInfo};
-use proto::map_service::ExportRequest;
+use common::proto::game_service::game_service_server::GameService;
+use common::proto::game_service::*;
+use common::proto::map_service::{ExportRequest, InternalAoeRequest};
 
 use ert::prelude::RunVia;
 use tonic::{async_trait, Request, Response, Status};
 use tracing::error;
 
+use std::collections::HashMap;
+
 pub type RPCResult<T> = Result<Response<T>, Status>;
 
 #[async_trait]
 impl GameService for Dispatcher {
-    async fn login(&self, player: Request<PlayerInfo>) -> RPCResult<()> {
-        let player = player.into_inner();
+    async fn login(&self, request: Request<PlayerInfo>) -> RPCResult<()> {
+        let player = request.into_inner();
         let player_id = player.id;
         let self = self.clone();
         async move {
-            self.check_xy(player.x, player.y)?;
+            check_xy(player.x, player.y)?;
             if !self.player_map.contains_key(&player.id) {
                 return Err(Status::already_exists(player.id.to_string()));
             }
-            let zone_id = xy_to_zone(player.x, player.y);
-            let server = self.get_best_server_of_zone(zone_id);
+            let (_, ZoneServers { server, .. }) = self.get_server_of_coord(player.x, player.y);
 
-            server.game_cli.clone().login(player).await?;
-            self.player_map.insert(player_id, server);
+            server.game_cli.clone().login(player.clone()).await?;
+            self.player_map
+                .insert(player_id, (server, player.x, player.y));
             Ok(Response::new(()))
         }
         .via_g(player_id)
@@ -34,38 +37,45 @@ impl GameService for Dispatcher {
     }
 
     /// 根据正方形四个顶点，查找出对应的servers，给每个都发送aoe请求
-    async fn aoe(&self, request: Request<CoordRequest>) -> RPCResult<()> {
-        use std::collections::HashMap;
+    async fn aoe(&self, request: Request<AoeRequest>) -> RPCResult<()> {
+        let AoeRequest {
+            id: player_id,
+            radius,
+        } = request.into_inner();
+        let (_, x, y) = self.get_player_cache(&player_id).map_err_unknown()?;
+        check_xy(x, y)?;
 
-        const AOE_RADIUS: u64 = 10;
-        let inner = request.into_inner();
-        let CoordRequest{id,target:Some(coord)} = inner.clone() else {
-            return Err(Status::invalid_argument("target is None"));
-        };
-        self.check_player_exist(id)?;
-        self.check_xy(coord.x, coord.y)?;
-
-        let left = coord.x.saturating_sub(AOE_RADIUS);
-        let right = coord.x + AOE_RADIUS;
-        let top = coord.y + AOE_RADIUS;
-        let bottom = coord.y.saturating_sub(AOE_RADIUS);
-        let tasks = [(left, bottom), (left, top), (right, bottom), (right, top)]
+        let xmin = x - radius;
+        let xmax = x + radius;
+        let ymax = y + radius;
+        let ymin = y - radius;
+        let tasks = [(xmin, ymin), (xmin, ymax), (xmax, ymin), (xmax, ymax)]
             .into_iter()
             .map(|(x, y)| {
-                let zone_id = xy_to_zone(x, y);
-                self.get_servers_of_zone(zone_id)
-                    .into_iter()
-                    .map(|s| (s.server_id, s))
+                let (
+                    _,
+                    ZoneServers {
+                        server,
+                        exporting_server,
+                    },
+                ) = self.get_server_of_coord(x, y);
+                if let Some(export) = exporting_server {
+                    vec![(server.server_id, server), (export.server_id, export)]
+                } else {
+                    vec![(server.server_id, server)]
+                }
             })
             .flatten()
             .collect::<HashMap<_, _>>()
             .into_values()
-            .map(|server| {
-                let request = inner.clone();
-                async move {
-                    if let Err(e) = server.game_cli.clone().aoe(request).await {
-                        error!(?e);
-                    }
+            .map(|server| async move {
+                if let Err(e) = server
+                    .map_cli
+                    .clone()
+                    .internal_aoe(InternalAoeRequest { x, y, radius })
+                    .await
+                {
+                    error!(?e);
                 }
             });
         futures::future::join_all(tasks).await;
@@ -73,34 +83,60 @@ impl GameService for Dispatcher {
         Ok(Response::new(()))
     }
 
-    async fn moving(&self, request: Request<CoordRequest>) -> RPCResult<Coord> {
-        let CoordRequest{id:player_id,target:Some(target)} = request.into_inner() else {
-            return Err(Status::invalid_argument("target is None"));
-        };
+    // 移动目标在当前服务器之外的要导出用户到目标服务器
+    async fn moving(&self, request: Request<MovingRequest>) -> RPCResult<Coord> {
+        let request = request.into_inner();
+        let MovingRequest {
+            id: player_id,
+            dx,
+            dy,
+        } = request.clone();
+        let self = self.clone();
+        async move {
+            let (current_server, x, y) = self.get_player_cache(&player_id).map_err_unknown()?;
 
-        let Some(entry) = self.player_map.get(&player_id) else {
-            return Err(Status::permission_denied("Please login first"))
-        };
-        self.check_xy(target.x, target.y)?;
-        let current_server = entry.value().clone();
-        let zone_id = xy_to_zone(target.x, target.y);
-        if !server_contains_zone(&current_server, zone_id) {
-            // 移动到当前服务器之外的区域
-            let target_server = self.get_best_server_of_zone(zone_id);
-            current_server
-                .map_cli
+            let target_x = x + dx;
+            let target_y = y + dy;
+            check_xy(target_x, target_y)?;
+
+            let (
+                zone_id,
+                ZoneServers {
+                    server: target_server,
+                    ..
+                },
+            ) = self.get_server_of_coord(target_x, target_y);
+            let coord = Coord {
+                x: target_x,
+                y: target_y,
+            };
+            if !current_server.contains_zone(zone_id) {}
+            if target_server != current_server {
+                // 移动到当前服务器之外的区域
+                current_server
+                    .map_cli
+                    .clone()
+                    .export_player(ExportRequest {
+                        player_id,
+                        addr: target_server.addr.clone(),
+                        coord: Some(coord.clone()),
+                    })
+                    .await?;
+            }
+            let Coord { x, y } = target_server
+                .game_cli
                 .clone()
-                .export_player(ExportRequest {
-                    player_id,
-                    addr: target_server.addr.clone(),
-                    coord: Some(target),
-                })
-                .await?;
+                .moving(request)
+                .await?
+                .into_inner();
+            self.player_map.insert(player_id, (target_server, x, y));
+            Ok(Response::new(coord))
         }
-        todo!()
+        .via_g(player_id)
+        .await
     }
 
-    async fn query(&self, _player_id: Request<PlayerIdRequest>) -> RPCResult<PlayerInfo> {
+    async fn query(&self, _player_id: Request<QueryRequest>) -> RPCResult<QueryReply> {
         todo!()
     }
 

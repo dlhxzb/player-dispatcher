@@ -5,7 +5,7 @@ mod util;
 
 pub use game_server::*;
 
-use proto::game_service::game_service_server::GameServiceServer;
+use common::proto::game_service::game_service_server::GameServiceServer;
 
 use tonic::transport::Server;
 use tracing::info;
@@ -16,6 +16,8 @@ async fn main() {
         .with_max_level(tracing::Level::INFO)
         .init();
     info!("starting");
+    // Set ert worker count.
+    ert::prelude::Router::new(10_000).set_as_global();
 
     let addr = "[::1]:50051".parse().unwrap();
     let dispatcher = dispatcher::Dispatcher::new().await.unwrap();

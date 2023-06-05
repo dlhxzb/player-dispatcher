@@ -11,12 +11,13 @@ service MapService {
     rpc ConnectServer (ConnectRequest) returns (google.protobuf.Empty);
     rpc DisconnectServer (ConnectRequest) returns (google.protobuf.Empty);
     rpc GetOverhead (google.protobuf.Empty) returns (OverheadReply);
+    rpc InternalAoe (InternalAoeRequest) returns (google.protobuf.Empty);
 }
 
 message ExportRequest {
     uint64 player_id = 1;
     string addr = 2;
-    game_service.Coord coord = 3; 
+    game_service.Coord coord = 3;
 }
 
 message ZonePlayersReply {
@@ -38,4 +39,10 @@ message ConnectRequest {
 
 message OverheadReply {
     uint64 count = 1;
+}
+
+message InternalAoeRequest {
+    float x = 1;
+    float y = 2;
+    float radius = 3;
 }

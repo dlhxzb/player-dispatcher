@@ -101,6 +101,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "common"
+version = "0.1.0"
+dependencies = [
+ "prost",
+ "tonic",
+ "tonic-build",
+]
+
+[[package]]
 name = "crossbeam-epoch"
 version = "0.9.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -288,10 +297,10 @@ name = "game-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "common",
  "crossbeam-skiplist",
  "ert",
  "futures",
- "proto",
  "tokio",
  "tonic",
  "tracing",
@@ -736,15 +745,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "213622a1460818959ac1181aaeb2dc9c7f63df720db7d788b3e24eacd1983e13"
 dependencies = [
  "prost",
-]
-
-[[package]]
-name = "proto"
-version = "0.1.0"
-dependencies = [
- "prost",
- "tonic",
- "tonic-build",
 ]
 
 [[package]]

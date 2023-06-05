@@ -1,0 +1,51 @@
+syntax = "proto3";
+package game_service;
+import "google/protobuf/empty.proto";
+
+service GameService {
+    rpc Login (PlayerInfo) returns (google.protobuf.Empty);
+    rpc Logout (PlayerIdRequest) returns (google.protobuf.Empty);
+    rpc Aoe (AoeRequest) returns (google.protobuf.Empty);
+    rpc Moving (MovingRequest) returns (Coord);
+    rpc Query (QueryRequest) returns (QueryReply);
+}
+
+message PlayerInfo {
+   uint64 id = 1;
+   float x = 2;
+   float y = 3;
+   uint64 money = 4;
+}
+
+message PlayerIdRequest {
+    uint64 id = 1;
+}
+
+message Coord {
+   float x = 1;
+   float y = 2;
+}
+
+// delta x y
+message MovingRequest {
+   uint64 id = 1;
+   float dx = 2;
+   float dy = 3;
+}
+
+message AoeRequest {
+   uint64 id = 1;
+   float radius = 2;
+}
+
+message QueryRequest {
+   uint64 id = 1;
+   float xmin = 2;
+   float ymin = 3;
+   float xmax = 4;
+   float ymax = 5;   
+}
+
+message QueryReply {
+   repeated PlayerInfo infos = 1;
+}
