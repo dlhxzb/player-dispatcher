@@ -16,10 +16,10 @@
     - [ ] 主导缩容
 - map-server
   - game API impl
-    - [ ] login
+    - [x] login
     - [ ] logout
-    - [ ] aoe：为查找区域内用户，要考虑将地图划分为小格，缓存小格内用户
-    - [ ] moving
+    - [x] aoe：~~为查找区域内用户，要考虑将地图划分为小格，缓存小格内用户~~ grid改为kdtree
+    - [x] moving
   - map API impl
     - [ ] 扩容：导出一半用户到指定server
     - [ ] 缩容：导出全部用户到指定server

@@ -12,6 +12,10 @@ pub trait MapErrUnknown {
 impl<T, E: std::fmt::Debug> MapErrUnknown for Result<T, E> {
     type S = T;
     fn map_err_unknown(self) -> Result<Self::S, Status> {
-        self.map_err(|e| Status::unknown(format!("{e:?}")))
+        self.map_err(|e| {
+            let s = format!("{e:?}");
+            log::error!("{}", s);
+            Status::unknown(s)
+        })
     }
 }

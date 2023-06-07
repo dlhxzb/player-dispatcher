@@ -22,14 +22,12 @@ impl GameService for Server {
             return Err(Status::already_exists(player.id.to_string()));
         }
 
-        let kdtree = self.kdtree.clone();
-        tokio::spawn(async move {
-            let _ = kdtree
-                .write()
-                .await
-                .add([player.x, player.y], player_id)
-                .map_err(|e| error!(?e));
-        });
+        self.kdtree
+            .write()
+            .await
+            .add([player.x, player.y], player_id)
+            .map_err_unknown()?;
+
         self.player_map.insert(player_id, player);
         Ok(Response::new(()))
     }
@@ -52,24 +50,26 @@ impl GameService for Server {
         let y0 = player.y;
         player.x += dx;
         player.y += dy;
-        let kdtree = self.kdtree.clone();
-        tokio::spawn(async move {
-            let mut guard = kdtree.write().await;
-            let Ok(size) = guard.remove(&[x0, y0], &player_id).map_err(|e| error!(?e)) else {
-                return;
-             };
+
+        // 更新kdtree
+        {
+            let mut guard = self.kdtree.write().await;
+            let size = guard.remove(&[x0, y0], &player_id).map_err_unknown()?;
             if size > 0 {
                 let _ = guard
                     .add([player.x, player.y], player_id)
-                    .map_err(|e| error!(?e));
+                    .map_err_unknown()?;
             } else {
                 error!("Not found {x0} {y0} in kdtree");
+                return Err(Status::unknown(format!("Not found {x0} {y0} in kdtree")));
             }
-        });
+        }
+
         let coord = Coord {
             x: player.x,
             y: player.y,
         };
+        // 更新player_map
         self.player_map.insert(player_id, player);
         Ok(Response::new(coord))
     }

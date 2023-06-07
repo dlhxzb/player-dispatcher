@@ -75,7 +75,12 @@ impl GameService for Dispatcher {
                 if let Err(e) = server
                     .map_cli
                     .clone()
-                    .internal_aoe(InternalAoeRequest { x, y, radius })
+                    .internal_aoe(InternalAoeRequest {
+                        player_id,
+                        x,
+                        y,
+                        radius,
+                    })
                     .await
                 {
                     error!(?e);

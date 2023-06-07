@@ -40,22 +40,36 @@ impl MapService for Server {
         use kdtree::distance::squared_euclidean;
 
         const AOE_MONEY: u64 = 1_u64;
+
         debug!("entry");
-        let InternalAoeRequest { x, y, radius } = request.into_inner();
-        // let player_map = self.player_map.clone();
-        // let kdtree = self.kdtree.clone();
-        // tokio::spawn(async move{
-
-        // });
-
-        let player_ids = self
-            .kdtree
-            .read()
-            .await
-            .within(&[x, y], radius * radius, &squared_euclidean)
-            .map_err_unknown()?
-            .into_iter()
-            .map(|(_dis, player_id)| *player_id);
+        let InternalAoeRequest {
+            player_id,
+            x,
+            y,
+            radius,
+        } = request.into_inner();
+        let player_map = self.player_map.clone();
+        let kdtree = self.kdtree.clone();
+        // 此处不在意时效性，读锁也没有并发一致性问题，可spawn出去
+        tokio::spawn(async move {
+            kdtree
+                .read()
+                .await
+                .within(&[x, y], radius * radius, &squared_euclidean)
+                .map_err(|e| error!(?e))?
+                .into_iter()
+                .filter(|(_dis, id)| **id != player_id)
+                .for_each(|(_dis, id)| {
+                    if let Some(entry) = player_map.get(id) {
+                        let mut player = entry.value().clone();
+                        player.money += AOE_MONEY;
+                        self.player_map.insert(*id, player);
+                    } else {
+                        error!("{id} in kdtree but not in player_map");
+                    }
+                });
+            Ok(())
+        });
 
         Ok(Response::new(()))
     }

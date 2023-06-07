@@ -42,7 +42,8 @@ message OverheadReply {
 }
 
 message InternalAoeRequest {
-    float x = 1;
-    float y = 2;
-    float radius = 3;
+    uint64 player_id = 1;
+    float x = 2;
+    float y = 3;
+    float radius = 4;
 }
