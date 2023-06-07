@@ -109,7 +109,7 @@ impl ServerScaling for Dispatcher {
                     })
                     .await
                     .map_err(anyhow::Error::msg)?;
-                    let (_, x, y) = self.get_player_cache(&player_id)?;
+                    let (_, x, y) = self.get_player_from_cache(&player_id)?;
                     self.player_map.insert(player_id, (target, x, y));
                     Result::<(), anyhow::Error>::Ok(())
                 }

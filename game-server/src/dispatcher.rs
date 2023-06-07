@@ -113,10 +113,10 @@ impl Dispatcher {
         }
     }
 
-    pub fn get_player_cache(&self, player_id: &PlayerId) -> Result<(ServerInfo, f32, f32)> {
+    pub fn get_player_from_cache(&self, player_id: &PlayerId) -> Result<(ServerInfo, f32, f32)> {
         self.player_map
             .get(player_id)
             .map(|entry| entry.value().clone())
-            .with_context(|| format!("Player:{player_id} no in cache"))
+            .context("player no in cache")
     }
 }

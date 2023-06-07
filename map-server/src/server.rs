@@ -1,65 +1,37 @@
+use common::proto::game_service::PlayerInfo;
+
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use crossbeam_skiplist::SkipMap;
+use kdtree::kdtree::KdTree;
+use tokio::sync::RwLock;
 
-pub type PlayerId = usize;
+use std::sync::Arc;
 
-pub enum ServerStatus {
-    Working,
-    Closing,
-    Closed,
-}
+pub type PlayerId = u64;
+pub type ZoneId = u64;
+pub type ServerId = u32;
 
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[repr(u8)]
-pub enum ServerId {
-    World(usize) = 1,        // (index)可有多台世界服务器
-    Zone(ZoneId, usize) = 2, // (ZoneId, index)同一Zone可有多台服务器
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Player {
-    pub id: PlayerId,
-    pub x: usize,
-    pub y: usize,
-    pub money: usize,
-}
-
-/// 地图某一Zone的服务器，一个Zone可有多台服务器
+/// 精确位置以player_map为准，kdtree作为加速结构缓存允许略微滞后，将在API中spawn出来修改，不必等待结束
 pub struct Server {
-    id: ServerId,
-    player_map: SkipMap<PlayerId, Player>,
-    status: ServerStatus,
-}
-
-// Zone以开始坐标为ID
-#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
-pub struct ZoneId {
-    pub x: u64,
-    pub y: u64,
-}
-
-#[async_trait]
-pub trait ServerApi {
-    async fn login(&self, player: Player);
-
-    async fn get_overhead(&self) -> usize;
+    pub id: ServerId,
+    pub player_map: Arc<SkipMap<PlayerId, PlayerInfo>>,
+    pub kdtree: Arc<RwLock<KdTree<f32, PlayerId, [f32; 2]>>>,
 }
 
 impl Server {
     pub fn new(id: ServerId) -> Self {
         Self {
             id,
-            player_map: SkipMap::new(),
-            status: ServerStatus::Working,
+            player_map: SkipMap::new().into(),
+            kdtree: RwLock::new(KdTree::with_capacity(2, 5)).into(),
         }
     }
-}
 
-#[async_trait]
-impl ServerApi for Server {
-    async fn login(&self, player: Player) {}
-
-    async fn get_overhead(&self) -> usize {
-        self.player_map.len()
+    pub fn get_player_from_cache(&self, player_id: &PlayerId) -> Result<PlayerInfo> {
+        self.player_map
+            .get(player_id)
+            .map(|entry| entry.value().clone())
+            .context("player no in cache")
     }
 }

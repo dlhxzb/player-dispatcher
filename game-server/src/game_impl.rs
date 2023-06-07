@@ -5,18 +5,19 @@ use crate::ZoneServers;
 use common::proto::game_service::game_service_server::GameService;
 use common::proto::game_service::*;
 use common::proto::map_service::{ExportRequest, InternalAoeRequest};
+use common::{MapErrUnknown, RPCResult};
 
 use ert::prelude::RunVia;
 use tonic::{async_trait, Request, Response, Status};
-use tracing::error;
+use tracing::*;
 
 use std::collections::HashMap;
 
-pub type RPCResult<T> = Result<Response<T>, Status>;
-
 #[async_trait]
 impl GameService for Dispatcher {
+    #[instrument(skip(self))]
     async fn login(&self, request: Request<PlayerInfo>) -> RPCResult<()> {
+        info!("entry");
         let player = request.into_inner();
         let player_id = player.id;
         let self = self.clone();
@@ -37,12 +38,14 @@ impl GameService for Dispatcher {
     }
 
     /// 根据正方形四个顶点，查找出对应的servers，给每个都发送aoe请求
+    #[instrument(skip(self))]
     async fn aoe(&self, request: Request<AoeRequest>) -> RPCResult<()> {
+        debug!("entry");
         let AoeRequest {
             id: player_id,
             radius,
         } = request.into_inner();
-        let (_, x, y) = self.get_player_cache(&player_id).map_err_unknown()?;
+        let (_, x, y) = self.get_player_from_cache(&player_id).map_err_unknown()?;
         check_xy(x, y)?;
 
         let xmin = x - radius;
@@ -84,7 +87,9 @@ impl GameService for Dispatcher {
     }
 
     // 移动目标在当前服务器之外的要导出用户到目标服务器
+    #[instrument(skip(self))]
     async fn moving(&self, request: Request<MovingRequest>) -> RPCResult<Coord> {
+        debug!("entry");
         let request = request.into_inner();
         let MovingRequest {
             id: player_id,
@@ -93,7 +98,8 @@ impl GameService for Dispatcher {
         } = request.clone();
         let self = self.clone();
         async move {
-            let (current_server, x, y) = self.get_player_cache(&player_id).map_err_unknown()?;
+            let (current_server, x, y) =
+                self.get_player_from_cache(&player_id).map_err_unknown()?;
 
             let target_x = x + dx;
             let target_y = y + dy;
@@ -136,11 +142,15 @@ impl GameService for Dispatcher {
         .await
     }
 
+    #[instrument(skip(self))]
     async fn query(&self, _player_id: Request<QueryRequest>) -> RPCResult<QueryReply> {
+        debug!("entry");
         todo!()
     }
 
+    #[instrument(skip(self))]
     async fn logout(&self, _player_id: Request<PlayerIdRequest>) -> RPCResult<()> {
+        info!("entry");
         todo!()
     }
 }

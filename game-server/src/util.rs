@@ -1,5 +1,4 @@
-use crate::game_impl::RPCResult;
-use crate::{ServerId, ServerInfo, ZoneId};
+use crate::{ServerId, ZoneId};
 
 use anyhow::Result;
 use tonic::Status;
@@ -11,40 +10,6 @@ pub const WORLD_X_MIN: f32 = -WORLD_X_MAX;
 pub const WORLD_Y_MIN: f32 = -WORLD_Y_MAX;
 
 pub const ROOT_ZONE_ID: ZoneId = 1;
-
-// zone范围均为左闭右开
-// pub fn xy_to_zone(x: f32, y: f32) -> ZoneId {
-//     let mut id = ROOT_ZONE_ID;
-//     let mut origin_x = 0.0;
-//     let mut origin_y = 0.0;
-//     let mut length = WORLD_X_MAX;
-//     let mut height = WORLD_Y_MAX;
-//     for _ in 1..MAX_ZONE_DEPTH {
-//         length /= 2.0;
-//         height /= 2.0;
-//         let pos = if y >= origin_y {
-//             origin_y += height;
-//             if x >= origin_x {
-//                 origin_x += length;
-//                 1
-//             } else {
-//                 origin_x -= length;
-//                 2
-//             }
-//         } else {
-//             origin_y -= height;
-//             if x < origin_x {
-//                 origin_x -= length;
-//                 3
-//             } else {
-//                 origin_x += length;
-//                 4
-//             }
-//         };
-//         id = id * 10 + pos;
-//     }
-//     id
-// }
 
 // zone范围均为左闭右开，根节点depth=1
 pub fn xy_to_zone_id(x: f32, y: f32, depth: u32) -> ZoneId {
@@ -111,16 +76,4 @@ pub fn gen_server_id() -> ServerId {
 pub async fn start_server() -> String {
     // TODO: 启动server
     "http://[::1]:50051".to_string()
-}
-
-pub trait MapErrUnknown {
-    type S;
-    fn map_err_unknown(self) -> std::result::Result<Self::S, Status>;
-}
-
-impl<T> MapErrUnknown for Result<T> {
-    type S = T;
-    fn map_err_unknown(self) -> std::result::Result<Self::S, Status> {
-        self.map_err(|e| Status::unknown(e.to_string()))
-    }
 }
