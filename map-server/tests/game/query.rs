@@ -10,15 +10,16 @@ use tonic::IntoRequest;
 async fn test_query() {
     crate::init_log();
     let server = Server::new(1);
+    // (0,0) (1,1) (2,2) (3,3)
     let players = (0..4)
         .map(|i| PlayerInfo {
             id: i,
-            x: 0.0,
-            y: 0.0,
+            x: i as f32,
+            y: i as f32,
             money: 0,
         })
         .collect::<Vec<_>>();
-    for player in players {
+    for player in &players {
         server
             .internal_login(player.clone().into_request())
             .await
@@ -28,14 +29,16 @@ async fn test_query() {
         .internal_query(
             QueryRequest {
                 id: 1,
-                xmin: 1.0,
+                xmin: 0.9,
                 ymin: 1.0,
                 xmax: 2.0,
-                ymax: 3.0,
+                ymax: 2.0,
             }
             .into_request(),
         )
         .await
-        .unwrap();
-    dbg!(res);
+        .unwrap()
+        .into_inner()
+        .infos;
+    assert_eq!(res, &players[1..=2]);
 }

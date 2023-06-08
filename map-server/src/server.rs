@@ -43,7 +43,7 @@ impl Server {
         }
     }
 
-    pub fn get_player_from_cache(&self, player_id: &PlayerId) -> Result<PlayerInfo> {
+    pub fn get_server_of_player(&self, player_id: &PlayerId) -> Result<PlayerInfo> {
         self.player_map
             .get(player_id)
             .map(|entry| entry.value().clone())

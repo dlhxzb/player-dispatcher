@@ -4,7 +4,7 @@ use common::proto::game_service::PlayerInfo;
 use common::proto::game_service::*;
 use common::proto::map_service::map_service_server::MapService;
 use common::proto::map_service::*;
-use common::{get_aabb_grids, get_xy_grid, MapErrUnknown, RPCResult};
+use common::{get_aabb_grids, get_xy_grid, MapErrUnknown, RPCResult, AOE_MONEY};
 
 use rayon::prelude::*;
 use tonic::{async_trait, Request, Response, Status};
@@ -63,7 +63,7 @@ impl MapService for Server {
             dx,
             dy,
         } = request.into_inner();
-        let mut player = self.get_player_from_cache(&player_id).map_err_unknown()?;
+        let mut player = self.get_server_of_player(&player_id).map_err_unknown()?;
         let x0 = player.x;
         let y0 = player.y;
         player.x += dx;
@@ -135,13 +135,17 @@ impl MapService for Server {
     #[instrument(skip(self))]
     async fn internal_logout(&self, request: Request<PlayerIdRequest>) -> RPCResult<()> {
         info!("entry");
-        todo!()
+        let PlayerIdRequest { id } = request.into_inner();
+        self.player_map.remove(&id).map(|entry| {
+            let p = entry.value();
+            let grid = get_xy_grid(p.x, p.y);
+            self.grid_player_map.remove(&grid);
+        });
+        Ok(Response::new(()))
     }
 
     #[instrument(skip(self))]
     async fn internal_aoe(&self, request: Request<InternalAoeRequest>) -> RPCResult<()> {
-        const AOE_MONEY: u64 = 1_u64;
-
         debug!("entry");
         let InternalAoeRequest {
             player_id,
@@ -149,28 +153,33 @@ impl MapService for Server {
             y,
             radius,
         } = request.into_inner();
-        // let player_map = self.player_map.clone();
-        // let kdtree = self.kdtree.clone();
-        // // 此处不在意时效性，读锁也没有并发一致性问题，可spawn出去
-        // tokio::spawn(async move {
-        //     kdtree
-        //         .read()
-        //         .await
-        //         .within(&[x, y], radius * radius, &squared_euclidean)
-        //         .map_err(|e| error!(?e))?
-        //         .into_iter()
-        //         .filter(|(_dis, id)| **id != player_id)
-        //         .for_each(|(_dis, id)| {
-        //             if let Some(entry) = player_map.get(id) {
-        //                 let mut player = entry.value().clone();
-        //                 player.money += AOE_MONEY;
-        //                 player_map.insert(*id, player);
-        //             } else {
-        //                 error!("{id} in kdtree but not in player_map");
-        //             }
-        //         });
-        //     Ok::<(), ()>(())
-        // });
+        let infos = get_aabb_grids(x - radius, x + radius, y - radius, y + radius)
+            .into_par_iter()
+            .filter_map(|grid| {
+                self.grid_player_map.get(&grid).map(|entry| {
+                    entry
+                        .value()
+                        .clone()
+                        .iter()
+                        .map(|id| *id)
+                        .collect::<Vec<_>>()
+                })
+            })
+            .flatten()
+            .filter_map(|id| {
+                // 过滤掉自己
+                if id != player_id {
+                    self.player_map.get(&id).map(|entry| entry.value().clone())
+                } else {
+                    None
+                }
+            })
+            .for_each(|mut p| {
+                if (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y) <= radius * radius {
+                    p.money += AOE_MONEY;
+                    self.player_map.insert(p.id, p);
+                }
+            });
 
         Ok(Response::new(()))
     }

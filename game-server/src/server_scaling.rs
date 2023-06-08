@@ -13,11 +13,6 @@ use futures::StreamExt;
 use tonic::async_trait;
 use tracing::error;
 
-// 服务器最大用户数，触发扩容
-pub const MAX_PLAYER: u64 = 1000;
-// 服务器最小用户数，触发缩容
-pub const MIN_PLAYER: u64 = MAX_PLAYER / 4;
-
 #[async_trait]
 pub trait ServerScaling {
     /// 扩容
@@ -109,7 +104,7 @@ impl ServerScaling for Dispatcher {
                     })
                     .await
                     .map_err(anyhow::Error::msg)?;
-                    let (_, x, y) = self.get_player_from_cache(&player_id)?;
+                    let (_, x, y) = self.get_server_of_player(&player_id)?;
                     self.player_map.insert(player_id, (target, x, y));
                     Result::<(), anyhow::Error>::Ok(())
                 }

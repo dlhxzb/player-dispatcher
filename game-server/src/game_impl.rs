@@ -8,6 +8,8 @@ use common::proto::map_service::{ExportRequest, InternalAoeRequest};
 use common::{MapErrUnknown, RPCResult};
 
 use ert::prelude::RunVia;
+use tonic::codegen::http::request;
+use tonic::IntoRequest;
 use tonic::{async_trait, Request, Response, Status};
 use tracing::*;
 
@@ -45,7 +47,7 @@ impl GameService for Dispatcher {
             id: player_id,
             radius,
         } = request.into_inner();
-        let (_, x, y) = self.get_player_from_cache(&player_id).map_err_unknown()?;
+        let (_, x, y) = self.get_server_of_player(&player_id).map_err_unknown()?;
         check_xy(x, y)?;
 
         let xmin = x - radius;
@@ -102,9 +104,10 @@ impl GameService for Dispatcher {
             dy,
         } = request.clone();
         let self = self.clone();
+
+        // ert: serialized by player_id
         async move {
-            let (current_server, x, y) =
-                self.get_player_from_cache(&player_id).map_err_unknown()?;
+            let (current_server, x, y) = self.get_server_of_player(&player_id).map_err_unknown()?;
 
             let target_x = x + dx;
             let target_y = y + dy;
@@ -123,7 +126,7 @@ impl GameService for Dispatcher {
             };
             if !current_server.contains_zone(zone_id) {}
             if target_server != current_server {
-                // 移动到当前服务器之外的区域
+                // 移动终点在另外一台服务器时，导出用户
                 current_server
                     .map_cli
                     .clone()
@@ -148,14 +151,24 @@ impl GameService for Dispatcher {
     }
 
     #[instrument(skip(self))]
-    async fn query(&self, _player_id: Request<QueryRequest>) -> RPCResult<QueryReply> {
+    async fn query(&self, request: Request<QueryRequest>) -> RPCResult<QueryReply> {
         debug!("entry");
         todo!()
     }
 
     #[instrument(skip(self))]
-    async fn logout(&self, _player_id: Request<PlayerIdRequest>) -> RPCResult<()> {
+    async fn logout(&self, request: Request<PlayerIdRequest>) -> RPCResult<()> {
         info!("entry");
-        todo!()
+        let request = request.into_inner();
+        let PlayerIdRequest { id: player_id } = request.clone();
+        let self = self.clone();
+
+        // ert: serialized by player_id
+        async move {
+            let (server, ..) = self.get_server_of_player(&player_id).map_err_unknown()?;
+            server.map_cli.clone().internal_logout(request).await
+        }
+        .via_g(player_id)
+        .await
     }
 }

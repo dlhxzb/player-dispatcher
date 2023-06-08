@@ -9,7 +9,11 @@ pub const WORLD_X_MAX: f32 = 1_000_000.0;
 pub const WORLD_Y_MAX: f32 = 1_000_000.0;
 pub const WORLD_X_MIN: f32 = -WORLD_X_MAX;
 pub const WORLD_Y_MIN: f32 = -WORLD_Y_MAX;
-pub const GRID_LENTH: usize = 100;
+pub const MAX_PLAYER: u64 = 1000; // 服务器最大用户数，触发扩容
+pub const MIN_PLAYER: u64 = MAX_PLAYER / 4; // 服务器最小用户数，触发缩容
+pub const MAX_ZONE_DEPTH: u32 = 10; // 四叉树最大深度
+pub const GRID_LENGTH: usize = 100; // Grid边长
+pub const AOE_MONEY: u64 = 1_u64; // 每次aoe给周边玩家增加的钱数
 
 pub trait MapErrUnknown {
     type S;
@@ -30,8 +34,8 @@ impl<T, E: std::fmt::Debug> MapErrUnknown for Result<T, E> {
 #[inline]
 pub fn get_xy_grid(x: f32, y: f32) -> (usize, usize) {
     (
-        (x - WORLD_X_MIN) as usize / GRID_LENTH,
-        (y - WORLD_Y_MIN) as usize / GRID_LENTH,
+        (x - WORLD_X_MIN) as usize / GRID_LENGTH,
+        (y - WORLD_Y_MIN) as usize / GRID_LENGTH,
     )
 }
 

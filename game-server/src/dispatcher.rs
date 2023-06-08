@@ -104,18 +104,18 @@ impl Dispatcher {
         }
     }
 
+    pub fn get_server_of_player(&self, player_id: &PlayerId) -> Result<(ServerInfo, f32, f32)> {
+        self.player_map
+            .get(player_id)
+            .map(|entry| entry.value().clone())
+            .context("player no in cache")
+    }
+
     pub fn check_player_exist(&self, player_id: &PlayerId) -> Result<()> {
         if self.player_map.contains_key(player_id) {
             Ok(())
         } else {
             bail!("Please login first");
         }
-    }
-
-    pub fn get_player_from_cache(&self, player_id: &PlayerId) -> Result<(ServerInfo, f32, f32)> {
-        self.player_map
-            .get(player_id)
-            .map(|entry| entry.value().clone())
-            .context("player no in cache")
     }
 }

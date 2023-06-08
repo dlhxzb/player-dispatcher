@@ -1,26 +1,37 @@
+# 架构
+服务分两层：
+* dispatcher：分发服务器，功能：1.分发用户请求；2.扩缩容管里。  
+  它有两个缓存：
+  * 区域-服务器缓存，四叉树，用于动态划分区域，实现负载均衡
+  * 用户-服务器缓存，分发请求时快速定位用户所在服务器
+* map-server：地图服务器，功能：1.处理用户请求；2.扩缩容时导入导出用户。
+  它有两个缓存： 
+  * 用户数据缓存
+  * 用户定位缓存，Grid空间加速
+  
 # TODO list
 - 设计
   - [x] 地图动态划分设计
-  - [ ] game proto 设计  `Doing`
-  - [ ] map proto 设计  `Doing`
-  - [ ] 并发安全设计  `Doing`
-- dispatcher: 
-  - game API impl
+  - [x] game proto 设计
+  - [x] map proto 设计
+  - [x] 并发安全设计
+- [ ] dispatcher: 
+  - [x] game API impl
     - [x] login
-    - [ ] logout
+    - [x] logout
     - [x] aoe
-    - [ ] moving  `Doing`
-  - 内部机能
+    - [x] moving
+  - [ ] 内部机能
     - [ ] overload monitor，监视各个地图服务器负载，发起扩缩容
     - [x] 主导扩容
     - [ ] 主导缩容
-- map-server
-  - game API impl
+- [ ] map-server
+  - [x] game API impl
     - [x] login
-    - [ ] logout
-    - [x] aoe：~~为查找区域内用户，要考虑将地图划分为小格，缓存小格内用户~~ grid改为kdtree
+    - [x] logout
+    - [x] aoe：为查找区域内用户，要考虑将地图划分为小格，缓存小格内用户（ grid改为kdtree又改回grid）
     - [x] moving
-  - map API impl
+  - [ ] map API impl
     - [ ] 扩容：导出一半用户到指定server
     - [ ] 缩容：导出全部用户到指定server
 - 其它
@@ -32,26 +43,11 @@
   - [ ] CI（包括发布docker image）
   - [ ] 扩容时在程序内启动image
   - [ ] 将边缘区域用户同步到其它服务器，提高用户在服务器间移动的性能
-  - [ ] 研究一下空间加速算法K-D tree，BVH，Grid等  `Doing`
+  - [x] 研究一下空间加速算法K-D tree，BVH，Grid等  
     - [ ] ~~K-D tree叶子容量数设置调优~~
   - [ ] 写一个epoch封装的无锁K-D tree
 
-### kdtree的问题
-* [kdtree](https://crates.io/crates/kdtree)测试时发现有个issue：坐标相同两点删除会死循环
-* [kiddo](https://crates.io/crates/kiddo)需要预设Bucket容量大小，无法处理同坐标大量玩家，Bucket设置太大失去意义
-自己实现简单grid吧
-
-
-# 架构
-服务分两层：
-* dispatcher：分发服务器。管理所有地图服务器，后台线程监视各服务器负载，发起扩缩容请求。它有两个缓存：
-  * 区域-服务器缓存，用于动态划分区域，负载均衡
-  * 用户-服务器缓存，以此为依据将请求分发到地图服务器
-* map-server：地图服务器，实现2个service
-  * game_service：玩家请求
-  * map_service：玩家导入导出等扩缩容相关请求
-
-# 并发一致性
+# 性能与并发一致性
 ### dispatcher
 考虑到写请求不少，不太符合RwLock的应用场景。
 为实现无锁，使用跳表（Skiplist）来记录服务器清单、玩家清单。  
@@ -60,9 +56,28 @@
 解决方案：考虑以玩家为单位将请求串行起来（ert crate）  
 
 对服务器来说，在monitor线程中串行，一次只做一个扩缩容操作
+
+不影响一致性前提下尽量并发/并行，for_each_concurrent + Rayon
+
 ### map-server
 打算用kd-tree作为空间加速结构，但是现有的kd-tree crate并不能无锁并发，如果有时间可以用crossbeam-epoch封装一个，
 但是现在可能要用RwLock了，这样一来服务器人数就不能太多了，频繁陷入内核调用性能堪忧啊！！！。
+
+# 加速结构
+## Dispatcher四叉树
+地图区域划分按照四叉树结构，四个象限1234，递归向下划分 
+每次划分都会有四个象限，意味着每个父节点都有满4个子节点。  
+叶子结点归地图服务器管理，而且一台服务器所管理的叶子结点必须是相同父节点
+同一个叶子节点只有在导入导出时会有2台服务器
+### 给定坐标对应区域查找
+从根节点一层层算出所在象限向下，直至节点不在在缓存中，返回其父节点
+
+## Map-server grid
+对于范围请求（aoe/query)先用grid过滤一遍，再进行详细判定
+#### 追加：kdtree的问题
+* [kdtree](https://crates.io/crates/kdtree)测试时发现有个issue：坐标相同两点删除会死循环
+* [kiddo](https://crates.io/crates/kiddo)需要预设Bucket容量大小，无法处理同坐标大量玩家，Bucket设置太大失去意义
+自己实现简单grid吧
 
 # API流程
 ### login
@@ -82,14 +97,6 @@
     * dispatcher更新用户-服务器缓存
     * 将walking请求发送给目标服务器
   * 如果是当前zone，则将walking发给原地图服务器
-
-# 数据结构
-地图区域划分按照四叉树结构，四个象限1234，递归向下划分 
-每次划分都会有四个象限，意味着每个父节点都有满4个子节点。  
-叶子结点归地图服务器管理，而且一台服务器所管理的叶子结点必须是相同父节点
-同一个叶子节点只有在导入导出时会有2台服务器
-### 给定坐标对应区域查找
-从根节点一层层算出所在象限向下，直至节点不在在缓存中，返回其父节点
 
 # 动态扩缩容流程
 设服务器最大人数MAX（扩容），最低人数MIN（缩容），  

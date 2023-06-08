@@ -1,2 +1,3 @@
-pub mod moving;
-pub mod query;
+mod aoe;
+mod moving;
+mod query;
