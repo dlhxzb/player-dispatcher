@@ -6,7 +6,6 @@ use common::proto::map_service::map_service_client::MapServiceClient;
 
 use anyhow::{bail, Context, Result};
 use crossbeam_skiplist::SkipMap;
-use tonic::Status;
 
 use std::ops::Deref;
 use std::sync::Arc;

@@ -1,13 +1,8 @@
 use crate::{ServerId, ZoneId};
 
 use anyhow::Result;
+use common::{WORLD_X_MAX, WORLD_X_MIN, WORLD_Y_MAX, WORLD_Y_MIN};
 use tonic::Status;
-
-// 世界地图尺寸
-pub const WORLD_X_MAX: f32 = 1_000_000.0;
-pub const WORLD_Y_MAX: f32 = 1_000_000.0;
-pub const WORLD_X_MIN: f32 = -WORLD_X_MAX;
-pub const WORLD_Y_MIN: f32 = -WORLD_Y_MAX;
 
 pub const ROOT_ZONE_ID: ZoneId = 1;
 
@@ -47,7 +42,7 @@ pub fn xy_to_zone_id(x: f32, y: f32, depth: u32) -> ZoneId {
 }
 
 pub fn check_xy(x: f32, y: f32) -> Result<(), Status> {
-    if x >= WORLD_X_MAX || y >= WORLD_Y_MAX {
+    if x >= WORLD_X_MAX || y >= WORLD_Y_MAX || x <= WORLD_X_MIN || y < WORLD_Y_MIN {
         Err(Status::out_of_range(format!("x:{x} y:{y}")))
     } else {
         Ok(())

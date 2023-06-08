@@ -24,6 +24,7 @@
     - [ ] 扩容：导出一半用户到指定server
     - [ ] 缩容：导出全部用户到指定server
 - 其它
+  - [ ] rayon加速
   - [ ] config
   - [ ] test
   - [ ] example
@@ -32,8 +33,14 @@
   - [ ] 扩容时在程序内启动image
   - [ ] 将边缘区域用户同步到其它服务器，提高用户在服务器间移动的性能
   - [ ] 研究一下空间加速算法K-D tree，BVH，Grid等  `Doing`
-    - [ ] K-D tree叶子容量数设置调优
+    - [ ] ~~K-D tree叶子容量数设置调优~~
   - [ ] 写一个epoch封装的无锁K-D tree
+
+### kdtree的问题
+* [kdtree](https://crates.io/crates/kdtree)测试时发现有个issue：坐标相同两点删除会死循环
+* [kiddo](https://crates.io/crates/kiddo)需要预设Bucket容量大小，无法处理同坐标大量玩家，Bucket设置太大失去意义
+自己实现简单grid吧
+
 
 # 架构
 服务分两层：

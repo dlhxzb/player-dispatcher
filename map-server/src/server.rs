@@ -2,10 +2,10 @@ use common::proto::game_service::PlayerInfo;
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use crossbeam_skiplist::SkipMap;
-use kdtree::kdtree::KdTree;
+use crossbeam_skiplist::{SkipMap, SkipSet};
 use tokio::sync::RwLock;
 
+use std::ops::Deref;
 use std::sync::Arc;
 
 pub type PlayerId = u64;
@@ -13,18 +13,33 @@ pub type ZoneId = u64;
 pub type ServerId = u32;
 
 /// 精确位置以player_map为准，kdtree作为加速结构缓存允许略微滞后，将在API中spawn出来修改，不必等待结束
-pub struct Server {
+pub struct InnerServer {
     pub id: ServerId,
-    pub player_map: Arc<SkipMap<PlayerId, PlayerInfo>>,
-    pub kdtree: Arc<RwLock<KdTree<f32, PlayerId, [f32; 2]>>>,
+    pub player_map: SkipMap<PlayerId, PlayerInfo>,
+    pub grid_player_map: SkipMap<(usize, usize), Arc<SkipSet<PlayerId>>>, // (usize, usize): grid id
+}
+
+#[derive(Clone)]
+pub struct Server {
+    inner: Arc<InnerServer>,
+}
+
+impl Deref for Server {
+    type Target = InnerServer;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
 }
 
 impl Server {
     pub fn new(id: ServerId) -> Self {
         Self {
-            id,
-            player_map: SkipMap::new().into(),
-            kdtree: RwLock::new(KdTree::with_capacity(2, 5)).into(),
+            inner: InnerServer {
+                id,
+                player_map: SkipMap::new(),
+                grid_player_map: SkipMap::new(),
+            }
+            .into(),
         }
     }
 
