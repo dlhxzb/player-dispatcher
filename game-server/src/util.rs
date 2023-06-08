@@ -17,11 +17,11 @@ pub fn xy_to_zone_id(x: f32, y: f32, depth: u32) -> ZoneId {
     for _ in 1..depth {
         length /= 2.0;
         height /= 2.0;
-        let pos = if y >= origin_y {
+        let quadrant = if y >= origin_y {
             origin_y += height;
             if x >= origin_x {
                 origin_x += length;
-                1
+                1 // 第1象限
             } else {
                 origin_x -= length;
                 2
@@ -36,9 +36,46 @@ pub fn xy_to_zone_id(x: f32, y: f32, depth: u32) -> ZoneId {
                 4
             }
         };
-        id = id * 10 + pos;
+        id = id * 10 + quadrant;
     }
     id
+}
+
+// return (xmin,ymin,xmax,ymax)
+pub fn get_zone_range(id: ZoneId) -> (f32, f32, f32, f32) {
+    let mut xmin = WORLD_X_MIN;
+    let mut ymin = WORLD_Y_MIN;
+    let mut xmax = WORLD_X_MAX;
+    let mut ymax = WORLD_Y_MAX;
+    if id > 1 {
+        let s = id
+            .to_string()
+            .chars()
+            .map(|d| d.to_digit(10).unwrap())
+            .collect::<Vec<_>>();
+        for quadrant in &s[1..] {
+            match quadrant {
+                1 => {
+                    xmin = (xmin + xmax) / 2.0;
+                    ymin = (ymin + ymax) / 2.0;
+                }
+                2 => {
+                    xmax = (xmin + xmax) / 2.0;
+                    ymin = (ymin + ymax) / 2.0;
+                }
+                3 => {
+                    xmax = (xmin + xmax) / 2.0;
+                    ymax = (ymin + ymax) / 2.0;
+                }
+                4 => {
+                    xmin = (xmin + xmax) / 2.0;
+                    ymax = (ymin + ymax) / 2.0;
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+    (xmin, ymin, xmax, ymax)
 }
 
 pub fn check_xy(x: f32, y: f32) -> Result<(), Status> {

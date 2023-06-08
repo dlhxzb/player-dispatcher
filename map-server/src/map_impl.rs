@@ -4,7 +4,7 @@ use common::proto::game_service::PlayerInfo;
 use common::proto::game_service::*;
 use common::proto::map_service::map_service_server::MapService;
 use common::proto::map_service::*;
-use common::{get_aabb_grids, get_xy_grid, MapErrUnknown, RPCResult, AOE_MONEY};
+use common::{get_grids_in_aabb, get_xy_grid, MapErrUnknown, RPCResult, AOE_MONEY};
 
 use rayon::prelude::*;
 use tonic::{async_trait, Request, Response, Status};
@@ -112,23 +112,51 @@ impl MapService for Server {
             ymin,
             ymax,
         } = request.into_inner();
-
-        let infos = get_aabb_grids(xmin, xmax, ymin, ymax)
-            .into_par_iter()
-            .filter_map(|grid| {
-                self.grid_player_map.get(&grid).map(|entry| {
-                    entry
-                        .value()
-                        .clone()
-                        .iter()
-                        .map(|id| *id)
-                        .collect::<Vec<_>>()
+        let aabb = AABB {
+            xmin,
+            xmax,
+            ymin,
+            ymax,
+        };
+        let grids = aabb.get_grids_in_aabb();
+        let infos = if grids.len() > self.player_map.len() {
+            // grid数量比用户还多，不用它过滤了，直接遍历所有用户
+            self.player_map
+                .iter()
+                .filter_map(|entry| {
+                    let p = entry.value();
+                    if aabb.contains(p.x, p.y) {
+                        Some(p.clone())
+                    } else {
+                        None
+                    }
                 })
-            })
-            .flatten()
-            .filter_map(|id| self.player_map.get(&id).map(|entry| entry.value().clone()))
-            .filter(|p| p.x >= xmin && p.x <= xmax && p.y >= ymin && p.y <= ymax) // 逐点过滤
-            .collect();
+                .collect()
+        } else {
+            grids
+                .par_iter()
+                .filter_map(|grid| {
+                    self.grid_player_map.get(grid).map(|entry| {
+                        entry
+                            .value()
+                            // .clone()
+                            .iter()
+                            .map(|id| *id)
+                            .collect::<Vec<_>>()
+                    })
+                })
+                .flatten()
+                .filter_map(|id| self.player_map.get(&id))
+                .filter_map(|entry| {
+                    let p = entry.value();
+                    if aabb.contains(p.x, p.y) {
+                        Some(p.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        };
         Ok(Response::new(QueryReply { infos }))
     }
 
@@ -153,33 +181,39 @@ impl MapService for Server {
             y,
             radius,
         } = request.into_inner();
-        let infos = get_aabb_grids(x - radius, x + radius, y - radius, y + radius)
-            .into_par_iter()
-            .filter_map(|grid| {
-                self.grid_player_map.get(&grid).map(|entry| {
-                    entry
-                        .value()
-                        .clone()
-                        .iter()
-                        .map(|id| *id)
-                        .collect::<Vec<_>>()
-                })
+        AABB {
+            xmin: x - radius,
+            xmax: x + radius,
+            ymin: y - radius,
+            ymax: y + radius,
+        }
+        .get_grids_in_aabb()
+        .into_par_iter()
+        .filter_map(|grid| {
+            self.grid_player_map.get(&grid).map(|entry| {
+                entry
+                    .value()
+                    .clone()
+                    .iter()
+                    .map(|id| *id)
+                    .collect::<Vec<_>>()
             })
-            .flatten()
-            .filter_map(|id| {
-                // 过滤掉自己
-                if id != player_id {
-                    self.player_map.get(&id).map(|entry| entry.value().clone())
-                } else {
-                    None
-                }
-            })
-            .for_each(|mut p| {
-                if (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y) <= radius * radius {
-                    p.money += AOE_MONEY;
-                    self.player_map.insert(p.id, p);
-                }
-            });
+        })
+        .flatten()
+        .filter_map(|id| {
+            // 过滤掉自己
+            if id != player_id {
+                self.player_map.get(&id).map(|entry| entry.value().clone())
+            } else {
+                None
+            }
+        })
+        .for_each(|mut p| {
+            if (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y) <= radius * radius {
+                p.money += AOE_MONEY;
+                self.player_map.insert(p.id, p);
+            }
+        });
 
         Ok(Response::new(()))
     }

@@ -39,14 +39,47 @@ pub fn get_xy_grid(x: f32, y: f32) -> (usize, usize) {
     )
 }
 
-pub fn get_aabb_grids(xmin: f32, xmax: f32, ymin: f32, ymax: f32) -> Vec<(usize, usize)> {
-    let grid_min = get_xy_grid(xmin, ymin);
-    let grid_max = get_xy_grid(xmax, ymax);
-    let mut set = Vec::new();
-    for x in grid_min.0..=grid_max.0 {
-        for y in grid_min.1..=grid_max.1 {
-            set.push((x, y));
+pub struct AABB {
+    pub xmin: f32,
+    pub xmax: f32,
+    pub ymin: f32,
+    pub ymax: f32,
+}
+impl AABB {
+    // 获取AABB范围内所有grids
+    pub fn get_grids_in_aabb(&self) -> Vec<(usize, usize)> {
+        let grid_min = get_xy_grid(self.xmin, self.ymin);
+        let grid_max = get_xy_grid(self.xmax, self.ymax);
+        let mut set = Vec::new();
+        for x in grid_min.0..=grid_max.0 {
+            for y in grid_min.1..=grid_max.1 {
+                set.push((x, y));
+            }
         }
+        set
     }
-    set
+    // 判断点是否在AABB内
+    #[inline]
+    pub fn contains(&self, x: f32, y: f32) -> bool {
+        self.x >= xmin && self.x <= xmax && self.y >= ymin && self.y <= ymax
+    }
+    // 判断2个AABB是否有重叠
+    pub fn check_crossed(&self, other: &Self) -> bool {
+        [
+            (self.xmin, self.ymin),
+            (self.xmin, self.ymax),
+            (self.xmax, self.ymin),
+            (self.xmax, self.ymax),
+        ]
+        .into_iter()
+        .any(|(x, y)| other.contains(x, y))
+            || [
+                (other.xmin, other.ymin),
+                (other.xmin, other.ymax),
+                (other.xmax, other.ymin),
+                (other.xmax, other.ymax),
+            ]
+            .into_iter()
+            .any(|(x, y)| self.contains(x, y))
+    }
 }

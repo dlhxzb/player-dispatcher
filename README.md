@@ -21,6 +21,7 @@
     - [x] logout
     - [x] aoe
     - [x] moving
+    - [ ] query
   - [ ] 内部机能
     - [ ] overload monitor，监视各个地图服务器负载，发起扩缩容
     - [x] 主导扩容
@@ -31,13 +32,14 @@
     - [x] logout
     - [x] aoe：为查找区域内用户，要考虑将地图划分为小格，缓存小格内用户（ grid改为kdtree又改回grid）
     - [x] moving
+    - [x] query
   - [ ] map API impl
     - [ ] 扩容：导出一半用户到指定server
     - [ ] 缩容：导出全部用户到指定server
 - 其它
-  - [ ] rayon加速
+  - [ ] rayon加速  `doing`
   - [ ] config
-  - [ ] test
+  - [ ] test  `doing`
   - [ ] example
   - [ ] benchmark
   - [ ] CI（包括发布docker image）
@@ -97,6 +99,11 @@
     * dispatcher更新用户-服务器缓存
     * 将walking请求发送给目标服务器
   * 如果是当前zone，则将walking发给原地图服务器
+  
+### query
+* dispatcher四叉树递归遍历所有分支，看zone是否在AABB范围内，与父节点范围取min后，向对应的地图服务器转发请求
+* map-server计算范围内grid，如果数量大于用户数量时，直接遍历用户。否则取出grid内用户逐个判断范围
+
 
 # 动态扩缩容流程
 设服务器最大人数MAX（扩容），最低人数MIN（缩容），  
@@ -123,6 +130,8 @@ dispatcher监视到某一服务器玩家小于MIN，尝试缩容。
    * login只发到导入server，moving/logout可根据ert串行等待导出结束。aoe/query无法确定受影响用户，也就无法与导入导出串行，是不是在扩缩容时要给服务器加锁呢？
    * 或者是不是可以aoe/query两个服务器都发
 3. 如果玩家都在一个点，无论怎么分割也没用，还是要设置一个最大深度
+4. query极限情况查询全图，对应的grid有10000x10000个，在传递给地图服务器时要先缩小范围，比如与父zone取min。
+   另外如果只有999玩家，那只有一个服务器，当计算出grid数大于用户数量时，直接遍历用户
 
 https://www.cnblogs.com/KillerAery/p/10878367.html#%E7%BD%91%E6%A0%BC-grid
 https://zhuanlan.zhihu.com/p/349594815?utm_medium=social&utm_oi=597318846227681280
