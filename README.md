@@ -21,7 +21,7 @@
     - [x] logout
     - [x] aoe
     - [x] moving
-    - [ ] query
+    - [x] query
   - [ ] 内部机能
     - [ ] overload monitor，监视各个地图服务器负载，发起扩缩容
     - [x] 主导扩容
@@ -75,7 +75,7 @@
 从根节点一层层算出所在象限向下，直至节点不在在缓存中，返回其父节点
 
 ## Map-server grid
-对于范围请求（aoe/query)先用grid过滤一遍，再进行详细判定
+对于范围请求（aoe/query）先用grid过滤一遍，再进行详细判定
 #### 追加：kdtree的问题
 * [kdtree](https://crates.io/crates/kdtree)测试时发现有个issue：坐标相同两点删除会死循环
 * [kiddo](https://crates.io/crates/kiddo)需要预设Bucket容量大小，无法处理同坐标大量玩家，Bucket设置太大失去意义

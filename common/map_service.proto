@@ -21,7 +21,7 @@ service MapService {
 message ExportRequest {
     uint64 player_id = 1;
     string addr = 2;
-    game_service.Coord coord = 3;
+    game_service.Coord coord = 3;  // 扩缩容时为空（不需要改变坐标）；玩家移动出界时，要传递新坐标
 }
 
 message ZonePlayersReply {
