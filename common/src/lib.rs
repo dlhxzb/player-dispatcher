@@ -18,6 +18,7 @@ pub const MIN_PLAYER: u64 = MAX_PLAYER / 4; // 服务器最小用户数，触发
 pub const MAX_ZONE_DEPTH: u32 = 10; // 四叉树最大深度
 pub const GRID_LENGTH: usize = 100; // Grid边长
 pub const AOE_MONEY: u64 = 1_u64; // 每次aoe给周边玩家增加的钱数
+pub const ROOT_ZONE_ID: ZoneId = 1;
 
 pub trait MapErrUnknown {
     type S;
@@ -35,8 +36,48 @@ impl<T, E: std::fmt::Debug> MapErrUnknown for Result<T, E> {
     }
 }
 
+// zone范围均为左闭右开，根节点depth=1
+pub fn xy_to_zone_id(x: f32, y: f32, depth: u32) -> ZoneId {
+    assert_ne!(depth, 0);
+    let mut id = ROOT_ZONE_ID;
+    let mut origin_x = 0.0;
+    let mut origin_y = 0.0;
+    let mut length = WORLD_X_MAX;
+    let mut height = WORLD_Y_MAX;
+    for _ in 1..depth {
+        length /= 2.0;
+        height /= 2.0;
+        let quadrant = if y >= origin_y {
+            origin_y += height;
+            if x >= origin_x {
+                origin_x += length;
+                1 // 第1象限
+            } else {
+                origin_x -= length;
+                2
+            }
+        } else {
+            origin_y -= height;
+            if x < origin_x {
+                origin_x -= length;
+                3
+            } else {
+                origin_x += length;
+                4
+            }
+        };
+        id = id * 10 + quadrant;
+    }
+    id
+}
+
 #[inline]
-pub fn get_xy_grid(x: f32, y: f32) -> (usize, usize) {
+pub fn zone_depth(id: ZoneId) -> u32 {
+    id.ilog10() + 1
+}
+
+#[inline]
+pub fn xy_to_grid(x: f32, y: f32) -> (usize, usize) {
     (
         (x - WORLD_X_MIN) as usize / GRID_LENGTH,
         (y - WORLD_Y_MIN) as usize / GRID_LENGTH,
@@ -95,8 +136,8 @@ impl AABB {
 
     // 获取AABB范围内所有grids
     pub fn get_grids_in_aabb(&self) -> Vec<(usize, usize)> {
-        let grid_min = get_xy_grid(self.xmin, self.ymin);
-        let grid_max = get_xy_grid(self.xmax, self.ymax);
+        let grid_min = xy_to_grid(self.xmin, self.ymin);
+        let grid_max = xy_to_grid(self.xmax, self.ymax);
         let mut set = Vec::new();
         for x in grid_min.0..=grid_max.0 {
             for y in grid_min.1..=grid_max.1 {

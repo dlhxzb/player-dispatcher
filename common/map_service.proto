@@ -5,11 +5,8 @@ import "game_service.proto";
 
 service MapService {
     rpc ExportPlayer (ExportRequest) returns (google.protobuf.Empty);
-    rpc ImportPlayer (game_service.PlayerInfo) returns (google.protobuf.Empty);
-    rpc GetHeaviestZonePlayers (google.protobuf.Empty) returns (ZonePlayersReply);
+    rpc GetHeaviestZonePlayers (ZoneDepth) returns (ZonePlayersReply);
     rpc GetNPlayers (GetPlayersRequest) returns (GetPlayersReply);
-    rpc ConnectServer (ConnectRequest) returns (google.protobuf.Empty);
-    rpc DisconnectServer (ConnectRequest) returns (google.protobuf.Empty);
     rpc GetOverhead (google.protobuf.Empty) returns (OverheadReply);
     rpc InternalLogin (game_service.PlayerInfo) returns (google.protobuf.Empty);
     rpc InternalLogout (game_service.PlayerIdRequest) returns (google.protobuf.Empty);
@@ -24,6 +21,10 @@ message ExportRequest {
     game_service.Coord coord = 3;  // 扩缩容时为空（不需要改变坐标）；玩家移动出界时，要传递新坐标
 }
 
+message ZoneDepth {
+    uint32 depth = 1;
+}
+
 message ZonePlayersReply {
     uint64 zone_id = 1;
     repeated uint64 player_ids = 2;
@@ -35,10 +36,6 @@ message GetPlayersRequest {
 
 message GetPlayersReply {
     repeated uint64 player_ids = 1;
-}
-
-message ConnectRequest {
-    string addr = 1;
 }
 
 message OverheadReply {

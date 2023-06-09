@@ -33,9 +33,9 @@
     - [x] aoe：为查找区域内用户，要考虑将地图划分为小格，缓存小格内用户（ grid改为kdtree又改回grid）
     - [x] moving
     - [x] query
-  - [ ] map API impl
-    - [ ] 扩容：导出一半用户到指定server
-    - [ ] 缩容：导出全部用户到指定server
+  - [x] map API impl
+    - [x] 扩容：导出最大zone或子zone用户到指定server
+    - [x] 缩容：导出全部用户到指定server
 - 其它
   - [ ] rayon加速  `doing`
   - [ ] config

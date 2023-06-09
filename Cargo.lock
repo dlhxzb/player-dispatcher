@@ -544,6 +544,7 @@ dependencies = [
  "anyhow",
  "common",
  "crossbeam-skiplist",
+ "itertools",
  "once_cell",
  "rayon",
  "tokio",

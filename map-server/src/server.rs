@@ -1,5 +1,6 @@
 use common::proto::game_service::PlayerInfo;
 use common::proto::map_service::map_service_client::MapServiceClient;
+use common::{PlayerId, ServerId};
 
 use anyhow::{Context, Result};
 use crossbeam_skiplist::{SkipMap, SkipSet};
@@ -9,16 +10,12 @@ use tonic::transport::Channel;
 use std::ops::Deref;
 use std::sync::Arc;
 
-pub type PlayerId = u64;
-pub type ZoneId = u64;
-pub type ServerId = u32;
-
 /// 精确位置以player_map为准，grid作为加速结构按位置初筛
 #[derive(Default)]
 pub struct InnerServer {
     pub id: ServerId,
     pub player_map: SkipMap<PlayerId, PlayerInfo>,
-    pub grid_player_map: SkipMap<(usize, usize), Arc<SkipSet<PlayerId>>>, // (usize, usize): grid id
+    pub grid_player_map: SkipMap<(usize, usize), SkipSet<PlayerId>>, // (usize, usize): grid id
     pub export_cli: Mutex<Option<(String, MapServiceClient<Channel>)>>, // 导出用户时使用，导出完成清空。不会同时向两个服务器导出
 }
 

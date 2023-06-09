@@ -1,6 +1,5 @@
 use crate::dispatcher::Dispatcher;
 use crate::util::*;
-use crate::ZoneServers;
 
 use common::proto::game_service::game_service_server::GameService;
 use common::proto::game_service::*;
@@ -8,10 +7,8 @@ use common::proto::map_service::{ExportRequest, InternalAoeRequest};
 use common::{MapErrUnknown, RPCResult, AABB};
 
 use ert::prelude::RunVia;
-use futures::StreamExt;
 use rayon::prelude::*;
-use tonic::codegen::http::request;
-use tonic::{async_trait, IntoRequest, Request, Response, Status};
+use tonic::{async_trait, Request, Response, Status};
 use tracing::*;
 
 use std::collections::HashMap;
@@ -25,11 +22,11 @@ impl GameService for Dispatcher {
         let player_id = player.id;
         let self = self.clone();
         async move {
-            check_xy(player.x, player.y)?;
+            check_xy_range(player.x, player.y)?;
             if !self.player_map.contains_key(&player.id) {
                 return Err(Status::already_exists(player.id.to_string()));
             }
-            let (_, ZoneServers { server, .. }) = self.get_server_of_coord(player.x, player.y);
+            let server = self.get_server_of_coord(player.x, player.y).1.server;
 
             server
                 .map_cli
@@ -44,7 +41,7 @@ impl GameService for Dispatcher {
         .await
     }
 
-    /// 根据正方形四个顶点，查找出对应的servers，给每个都发送aoe请求
+    /// 根据正方形四个顶点，查找出对应的最多4个servers，给每个都发送aoe请求
     #[instrument(skip(self))]
     async fn aoe(&self, request: Request<AoeRequest>) -> RPCResult<()> {
         debug!("entry");
@@ -53,7 +50,7 @@ impl GameService for Dispatcher {
             radius,
         } = request.into_inner();
         let (_, x, y) = self.get_server_of_player(&player_id).map_err_unknown()?;
-        check_xy(x, y)?;
+        check_xy_range(x, y)?;
 
         let xmin = x - radius;
         let xmax = x + radius;
@@ -104,7 +101,7 @@ impl GameService for Dispatcher {
 
             let target_x = x + dx;
             let target_y = y + dy;
-            check_xy(target_x, target_y)?;
+            check_xy_range(target_x, target_y)?;
 
             let (
                 zone_id,

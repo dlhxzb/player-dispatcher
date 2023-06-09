@@ -1,14 +1,13 @@
 use crate::server::Server;
 
-use common::proto::game_service::PlayerInfo;
 use common::proto::game_service::*;
 use common::proto::map_service::map_service_client::MapServiceClient;
 use common::proto::map_service::map_service_server::MapService;
 use common::proto::map_service::*;
-use common::{get_xy_grid, MapErrUnknown, RPCResult, AABB, AOE_MONEY};
+use common::*;
 
+use itertools::Itertools;
 use rayon::prelude::*;
-use tonic::codegen::http::request;
 use tonic::{async_trait, IntoRequest, Request, Response, Status};
 use tracing::*;
 
@@ -41,32 +40,72 @@ impl MapService for Server {
                 player.x = x;
                 player.y = y;
             }
-            target_cli.internal_login(player.into_request()).await
+            target_cli.internal_login(player).await?;
+            self.internal_logout(PlayerIdRequest { id: player_id }.into_request())
+                .await
         })
         .await
         .map_err_unknown()?
     }
 
-    async fn import_player(&self, request: Request<PlayerInfo>) -> RPCResult<()> {
-        todo!()
+    // 找到人数最多的zone，只有一个zone时从4个子zone中找
+    async fn get_heaviest_zone_players(
+        &self,
+        request: Request<ZoneDepth>,
+    ) -> RPCResult<ZonePlayersReply> {
+        info!("entry");
+        let depth = request.into_inner().depth;
+        let self = self.clone();
+        tokio::spawn(async move {
+            let (zone_id, player_ids) = self
+                .player_map
+                .iter()
+                .map(|entry| (*entry.key(), (entry.value().x, entry.value().y)))
+                .into_group_map_by(|(_id, (x, y))| xy_to_zone_id(*x, *y, depth))
+                .into_iter()
+                .map(|(zone_id, value)| {
+                    let (player_ids, _): (Vec<_>, Vec<_>) = value.into_iter().unzip();
+                    (zone_id, player_ids)
+                })
+                .max_by_key(|(_zone_id, ids)| ids.len())
+                .unwrap_or_default();
+            info!("zone_id:{}, players:{}", zone_id, player_ids.len());
+            Ok(Response::new(ZonePlayersReply {
+                zone_id,
+                player_ids,
+            }))
+        })
+        .await
+        .map_err_unknown()?
     }
-    async fn get_heaviest_zone_players(&self, request: Request<()>) -> RPCResult<ZonePlayersReply> {
-        todo!()
-    }
+
     async fn get_n_players(
         &self,
         request: Request<GetPlayersRequest>,
     ) -> RPCResult<GetPlayersReply> {
-        todo!()
+        info!("entry");
+        let n = request.into_inner().n;
+        let self = self.clone();
+        tokio::spawn(async move {
+            let mut count = 0;
+            let mut player_ids = Vec::with_capacity(n as usize);
+            let mut iter = self.player_map.iter();
+            while let Some(entry) = iter.next() {
+                if count == n {
+                    break;
+                }
+                player_ids.push(*entry.key());
+                count += 1;
+            }
+            Ok(Response::new(GetPlayersReply { player_ids }))
+        })
+        .await
+        .map_err_unknown()?
     }
-    async fn connect_server(&self, request: Request<ConnectRequest>) -> RPCResult<()> {
-        todo!()
-    }
-    async fn disconnect_server(&self, request: Request<ConnectRequest>) -> RPCResult<()> {
-        todo!()
-    }
-    async fn get_overhead(&self, request: Request<()>) -> RPCResult<OverheadReply> {
-        todo!()
+    async fn get_overhead(&self, _request: Request<()>) -> RPCResult<OverheadReply> {
+        info!("entry");
+        let count = self.player_map.len() as u64;
+        Ok(Response::new(OverheadReply { count }))
     }
 
     #[instrument(skip(self))]
@@ -80,12 +119,29 @@ impl MapService for Server {
                 return Err(Status::already_exists(player.id.to_string()));
             }
 
-            let grid = get_xy_grid(player.x, player.y);
+            let grid = xy_to_grid(player.x, player.y);
             self.grid_player_map
                 .get_or_insert_with(grid, Default::default)
                 .value()
                 .insert(player_id);
             self.player_map.insert(player_id, player);
+            Ok(Response::new(()))
+        })
+        .await
+        .map_err_unknown()?
+    }
+
+    #[instrument(skip(self))]
+    async fn internal_logout(&self, request: Request<PlayerIdRequest>) -> RPCResult<()> {
+        info!("entry");
+        let self = self.clone();
+        tokio::spawn(async move {
+            let id = request.into_inner().id;
+            self.player_map.remove(&id).map(|entry| {
+                let p = entry.value();
+                let grid = xy_to_grid(p.x, p.y);
+                self.grid_player_map.remove(&grid);
+            });
             Ok(Response::new(()))
         })
         .await
@@ -108,21 +164,20 @@ impl MapService for Server {
             player.x += dx;
             player.y += dy;
 
-            let origin_grid = get_xy_grid(x0, y0);
-            let target_grid = get_xy_grid(player.x, player.y);
+            let origin_grid = xy_to_grid(x0, y0);
+            let target_grid = xy_to_grid(player.x, player.y);
             // 跨越grid，先删后插
             if target_grid != origin_grid {
-                let set = self
+                let entry = self
                     .grid_player_map
                     .get(&origin_grid)
-                    .map(|entry| entry.value().clone())
                     .ok_or("Not in grid_player_map")
                     .map_err_unknown()?;
-                if set.len() <= 1 {
+                if entry.value().len() <= 1 {
                     // set剩1个直接删set
                     self.grid_player_map.remove(&origin_grid);
                 } else {
-                    set.remove(&player_id);
+                    entry.value().remove(&player_id);
                 }
                 self.grid_player_map
                     .get_or_insert_with(target_grid, Default::default)
@@ -202,23 +257,6 @@ impl MapService for Server {
                     .collect()
             };
             Ok(Response::new(QueryReply { infos }))
-        })
-        .await
-        .map_err_unknown()?
-    }
-
-    #[instrument(skip(self))]
-    async fn internal_logout(&self, request: Request<PlayerIdRequest>) -> RPCResult<()> {
-        info!("entry");
-        let self = self.clone();
-        tokio::spawn(async move {
-            let id = request.into_inner().id;
-            self.player_map.remove(&id).map(|entry| {
-                let p = entry.value();
-                let grid = get_xy_grid(p.x, p.y);
-                self.grid_player_map.remove(&grid);
-            });
-            Ok(Response::new(()))
         })
         .await
         .map_err_unknown()?

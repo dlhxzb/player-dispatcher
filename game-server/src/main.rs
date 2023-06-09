@@ -3,7 +3,7 @@ mod game_impl;
 mod server_scaling;
 mod util;
 
-pub use game_server::*;
+// pub use game_server::*;
 
 use common::proto::game_service::game_service_server::GameServiceServer;
 

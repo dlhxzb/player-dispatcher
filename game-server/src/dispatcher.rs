@@ -1,11 +1,9 @@
 use crate::util::*;
-use crate::{ServerInfo, ServerInfoInner, ServerStatus, ZoneServers};
 
-use common::proto::game_service::game_service_client::GameServiceClient;
 use common::proto::map_service::map_service_client::MapServiceClient;
-use common::{PlayerId, ZoneId};
+use common::{xy_to_zone_id, PlayerId, ZoneId, MAX_ZONE_DEPTH, ROOT_ZONE_ID};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use crossbeam_skiplist::SkipMap;
 
 use std::collections::HashMap;
@@ -56,7 +54,6 @@ impl Dispatcher {
                 zones: vec![ROOT_ZONE_ID],
                 map_cli,
                 status: ServerStatus::Working,
-                overhead: 0,
                 addr,
             }
             .into(),
@@ -78,30 +75,19 @@ impl Dispatcher {
         })
     }
 
-    // 获取坐标所在服务器，从根节点向下查找至空节点，返回其父节点
+    // 逐层向下，找到为止
     pub fn get_server_of_coord(&self, x: f32, y: f32) -> (ZoneId, ZoneServers) {
-        let mut zone_id = ROOT_ZONE_ID;
-        let mut server = self
-            .zone_server_map
-            .get(&zone_id)
-            .expect("Root server not found")
-            .value()
-            .clone();
-        let mut depth = 1;
-        loop {
-            depth += 1;
-            let tmp_zone_id = xy_to_zone_id(x, y, depth);
-            if let Some(tmp_server) = self
+        for depth in 1..=MAX_ZONE_DEPTH {
+            let zone_id = xy_to_zone_id(x, y, depth);
+            if let Some(server) = self
                 .zone_server_map
-                .get(&tmp_zone_id)
+                .get(&zone_id)
                 .map(|entry| entry.value().clone())
             {
-                server = tmp_server;
-                zone_id = tmp_zone_id;
-            } else {
                 return (zone_id, server);
             }
         }
+        panic!("Root zone server not found");
     }
 
     pub fn get_server_of_player(&self, player_id: &PlayerId) -> Result<(ServerInfo, f32, f32)> {
