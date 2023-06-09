@@ -5,16 +5,12 @@ pub mod util;
 
 use common::proto::game_service::game_service_client::GameServiceClient;
 use common::proto::map_service::map_service_client::MapServiceClient;
+use common::{ServerId, ZoneId};
 
-use crossbeam_skiplist::SkipMap;
 use tonic::transport::Channel;
 
 use std::ops::Deref;
 use std::sync::Arc;
-
-pub type PlayerId = u64;
-pub type ZoneId = u64;
-pub type ServerId = u32;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ServerStatus {
@@ -37,7 +33,6 @@ pub struct ServerInfoInner {
     pub server_id: ServerId,
     pub zones: Vec<ZoneId>,
     pub map_cli: MapServiceClient<Channel>,
-    pub game_cli: GameServiceClient<Channel>,
     pub status: ServerStatus,
     pub overhead: usize,
     pub addr: String,
@@ -55,7 +50,7 @@ impl ServerInfo {
     }
 }
 
-// 一个叶子节点除了有自身服务器，可能还有一台正在给起导入用户的服务器。除了login，其它请求要两个都发送
+// 一个叶子节点除了有自身服务器，可能还有一台正在给起导入用户的服务器。未指定用户的请求要两个都发送，e.g. aoe/query
 #[derive(Clone)]
 pub struct ZoneServers {
     pub server: ServerInfo,

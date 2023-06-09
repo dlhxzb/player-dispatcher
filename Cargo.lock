@@ -324,6 +324,7 @@ dependencies = [
  "crossbeam-skiplist",
  "ert",
  "futures",
+ "rayon",
  "tokio",
  "tonic",
  "tracing",

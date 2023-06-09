@@ -4,7 +4,7 @@ use common::proto::game_service::PlayerInfo;
 use common::proto::game_service::*;
 use common::proto::map_service::map_service_server::MapService;
 use common::proto::map_service::*;
-use common::{get_grids_in_aabb, get_xy_grid, MapErrUnknown, RPCResult, AOE_MONEY};
+use common::{get_xy_grid, MapErrUnknown, RPCResult, AABB, AOE_MONEY};
 
 use rayon::prelude::*;
 use tonic::{async_trait, Request, Response, Status};
@@ -163,7 +163,7 @@ impl MapService for Server {
     #[instrument(skip(self))]
     async fn internal_logout(&self, request: Request<PlayerIdRequest>) -> RPCResult<()> {
         info!("entry");
-        let PlayerIdRequest { id } = request.into_inner();
+        let id = request.into_inner().id;
         self.player_map.remove(&id).map(|entry| {
             let p = entry.value();
             let grid = get_xy_grid(p.x, p.y);

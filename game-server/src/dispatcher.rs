@@ -1,12 +1,14 @@
 use crate::util::*;
-use crate::{PlayerId, ServerInfo, ServerInfoInner, ServerStatus, ZoneId, ZoneServers};
+use crate::{ServerInfo, ServerInfoInner, ServerStatus, ZoneServers};
 
 use common::proto::game_service::game_service_client::GameServiceClient;
 use common::proto::map_service::map_service_client::MapServiceClient;
+use common::{PlayerId, ZoneId};
 
 use anyhow::{bail, Context, Result};
 use crossbeam_skiplist::SkipMap;
 
+use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -46,7 +48,6 @@ impl Dispatcher {
         let addr = start_server().await;
         // TODO: 将zone等配置传递给server
         let map_cli = MapServiceClient::connect(addr.clone()).await?;
-        let game_cli = GameServiceClient::connect(addr.clone()).await?;
 
         let zone_server_map = SkipMap::new();
         let server = ServerInfo {
@@ -54,7 +55,6 @@ impl Dispatcher {
                 server_id,
                 zones: vec![ROOT_ZONE_ID],
                 map_cli,
-                game_cli,
                 status: ServerStatus::Working,
                 overhead: 0,
                 addr,
@@ -111,11 +111,14 @@ impl Dispatcher {
             .context("player no in cache")
     }
 
-    pub fn check_player_exist(&self, player_id: &PlayerId) -> Result<()> {
-        if self.player_map.contains_key(player_id) {
-            Ok(())
-        } else {
-            bail!("Please login first");
-        }
+    pub fn get_all_servers(&self) -> Vec<ServerInfo> {
+        self.zone_server_map
+            .iter()
+            .map(|entry| entry.value().clone().into_vec())
+            .flatten()
+            .map(|server| (server.server_id, server))
+            .collect::<HashMap<_, _>>()
+            .into_values()
+            .collect()
     }
 }

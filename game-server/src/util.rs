@@ -1,4 +1,4 @@
-use crate::{ServerId, ZoneId};
+use common::{ServerId, ZoneId};
 
 use anyhow::Result;
 use common::{WORLD_X_MAX, WORLD_X_MIN, WORLD_Y_MAX, WORLD_Y_MIN};
@@ -41,43 +41,6 @@ pub fn xy_to_zone_id(x: f32, y: f32, depth: u32) -> ZoneId {
     id
 }
 
-// return (xmin,ymin,xmax,ymax)
-pub fn get_zone_range(id: ZoneId) -> (f32, f32, f32, f32) {
-    let mut xmin = WORLD_X_MIN;
-    let mut ymin = WORLD_Y_MIN;
-    let mut xmax = WORLD_X_MAX;
-    let mut ymax = WORLD_Y_MAX;
-    if id > 1 {
-        let s = id
-            .to_string()
-            .chars()
-            .map(|d| d.to_digit(10).unwrap())
-            .collect::<Vec<_>>();
-        for quadrant in &s[1..] {
-            match quadrant {
-                1 => {
-                    xmin = (xmin + xmax) / 2.0;
-                    ymin = (ymin + ymax) / 2.0;
-                }
-                2 => {
-                    xmax = (xmin + xmax) / 2.0;
-                    ymin = (ymin + ymax) / 2.0;
-                }
-                3 => {
-                    xmax = (xmin + xmax) / 2.0;
-                    ymax = (ymin + ymax) / 2.0;
-                }
-                4 => {
-                    xmin = (xmin + xmax) / 2.0;
-                    ymax = (ymin + ymax) / 2.0;
-                }
-                _ => unreachable!(),
-            }
-        }
-    }
-    (xmin, ymin, xmax, ymax)
-}
-
 pub fn check_xy(x: f32, y: f32) -> Result<(), Status> {
     if x >= WORLD_X_MAX || y >= WORLD_Y_MAX || x <= WORLD_X_MIN || y < WORLD_Y_MIN {
         Err(Status::out_of_range(format!("x:{x} y:{y}")))
@@ -87,7 +50,7 @@ pub fn check_xy(x: f32, y: f32) -> Result<(), Status> {
 }
 
 // 判断一节点是否在另一节点的父路径上
-pub fn is_parent(zone: ZoneId, parent: ZoneId) -> bool {
+pub fn is_in_parent_path(zone: ZoneId, parent: ZoneId) -> bool {
     let len1 = zone.ilog10();
     let len2 = parent.ilog10();
     len1 >= len2 && zone / 10_u64.pow(len1 - len2) == parent

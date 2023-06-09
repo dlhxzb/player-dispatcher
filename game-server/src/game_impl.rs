@@ -5,12 +5,13 @@ use crate::ZoneServers;
 use common::proto::game_service::game_service_server::GameService;
 use common::proto::game_service::*;
 use common::proto::map_service::{ExportRequest, InternalAoeRequest};
-use common::{MapErrUnknown, RPCResult};
+use common::{MapErrUnknown, RPCResult, AABB};
 
 use ert::prelude::RunVia;
+use futures::StreamExt;
+use rayon::prelude::*;
 use tonic::codegen::http::request;
-use tonic::IntoRequest;
-use tonic::{async_trait, Request, Response, Status};
+use tonic::{async_trait, IntoRequest, Request, Response, Status};
 use tracing::*;
 
 use std::collections::HashMap;
@@ -30,7 +31,11 @@ impl GameService for Dispatcher {
             }
             let (_, ZoneServers { server, .. }) = self.get_server_of_coord(player.x, player.y);
 
-            server.game_cli.clone().login(player.clone()).await?;
+            server
+                .map_cli
+                .clone()
+                .internal_login(player.clone())
+                .await?;
             self.player_map
                 .insert(player_id, (server, player.x, player.y));
             Ok(Response::new(()))
@@ -56,21 +61,9 @@ impl GameService for Dispatcher {
         let ymin = y - radius;
         let tasks = [(xmin, ymin), (xmin, ymax), (xmax, ymin), (xmax, ymax)]
             .into_iter()
-            .map(|(x, y)| {
-                let (
-                    _,
-                    ZoneServers {
-                        server,
-                        exporting_server,
-                    },
-                ) = self.get_server_of_coord(x, y);
-                if let Some(export) = exporting_server {
-                    vec![(server.server_id, server), (export.server_id, export)]
-                } else {
-                    vec![(server.server_id, server)]
-                }
-            })
+            .map(|(x, y)| self.get_server_of_coord(x, y).1.into_vec())
             .flatten()
+            .map(|server| (server.server_id, server))
             .collect::<HashMap<_, _>>()
             .into_values()
             .map(|server| async move {
@@ -138,9 +131,9 @@ impl GameService for Dispatcher {
                     .await?;
             }
             let Coord { x, y } = target_server
-                .game_cli
+                .map_cli
                 .clone()
-                .moving(request)
+                .internal_moving(request)
                 .await?
                 .into_inner();
             self.player_map.insert(player_id, (target_server, x, y));
@@ -153,14 +146,70 @@ impl GameService for Dispatcher {
     #[instrument(skip(self))]
     async fn query(&self, request: Request<QueryRequest>) -> RPCResult<QueryReply> {
         debug!("entry");
-        todo!()
+        let QueryRequest {
+            id,
+            xmin,
+            xmax,
+            ymin,
+            ymax,
+        } = request.into_inner();
+        let query_aabb = AABB {
+            xmin,
+            xmax,
+            ymin,
+            ymax,
+        };
+        let tasks = self
+            .get_all_servers()
+            .into_par_iter()
+            .filter_map(|server| {
+                let zone_id = if server.zones.len() == 1 {
+                    server.zones[0]
+                } else {
+                    // server有多个zone时，返回父节点zone
+                    server.zones[0] / 10
+                };
+                let zone_aabb = AABB::from_zone_id(zone_id);
+                // 取交集
+                zone_aabb
+                    .get_intersection(&query_aabb)
+                    .map(|aabb| async move {
+                        server
+                            .map_cli
+                            .clone()
+                            .internal_query(QueryRequest {
+                                id,
+                                xmin: aabb.xmin,
+                                xmax: aabb.xmax,
+                                ymin: aabb.ymin,
+                                ymax: aabb.ymax,
+                            })
+                            .await
+                            .map(|res| res.into_inner().infos)
+                    })
+            })
+            .collect::<Vec<_>>();
+        let infos = futures::future::join_all(tasks)
+            .await
+            .into_iter()
+            .filter_map(|res| match res {
+                Ok(infos) => Some(infos),
+                Err(e) => {
+                    error!(?e);
+                    None
+                }
+            })
+            .flatten()
+            .collect();
+
+        Ok(Response::new(QueryReply { infos }))
     }
 
     #[instrument(skip(self))]
     async fn logout(&self, request: Request<PlayerIdRequest>) -> RPCResult<()> {
         info!("entry");
         let request = request.into_inner();
-        let PlayerIdRequest { id: player_id } = request.clone();
+        let player_id = request.id;
         let self = self.clone();
 
         // ert: serialized by player_id

@@ -4,6 +4,10 @@ use tonic::{Response, Status};
 
 pub type RPCResult<T> = Result<Response<T>, Status>;
 
+pub type PlayerId = u64;
+pub type ZoneId = u64;
+pub type ServerId = u32;
+
 // 世界地图尺寸
 pub const WORLD_X_MAX: f32 = 1_000_000.0;
 pub const WORLD_Y_MAX: f32 = 1_000_000.0;
@@ -39,6 +43,7 @@ pub fn get_xy_grid(x: f32, y: f32) -> (usize, usize) {
     )
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct AABB {
     pub xmin: f32,
     pub xmax: f32,
@@ -46,6 +51,48 @@ pub struct AABB {
     pub ymax: f32,
 }
 impl AABB {
+    pub fn from_zone_id(id: ZoneId) -> Self {
+        // return (xmin,ymin,xmax,ymax)
+        let mut xmin = WORLD_X_MIN;
+        let mut ymin = WORLD_Y_MIN;
+        let mut xmax = WORLD_X_MAX;
+        let mut ymax = WORLD_Y_MAX;
+        if id > 1 {
+            let s = id
+                .to_string()
+                .chars()
+                .map(|d| d.to_digit(10).unwrap())
+                .collect::<Vec<_>>();
+            for quadrant in &s[1..] {
+                match quadrant {
+                    1 => {
+                        xmin = (xmin + xmax) / 2.0;
+                        ymin = (ymin + ymax) / 2.0;
+                    }
+                    2 => {
+                        xmax = (xmin + xmax) / 2.0;
+                        ymin = (ymin + ymax) / 2.0;
+                    }
+                    3 => {
+                        xmax = (xmin + xmax) / 2.0;
+                        ymax = (ymin + ymax) / 2.0;
+                    }
+                    4 => {
+                        xmin = (xmin + xmax) / 2.0;
+                        ymax = (ymin + ymax) / 2.0;
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        }
+        Self {
+            xmin,
+            ymin,
+            xmax,
+            ymax,
+        }
+    }
+
     // 获取AABB范围内所有grids
     pub fn get_grids_in_aabb(&self) -> Vec<(usize, usize)> {
         let grid_min = get_xy_grid(self.xmin, self.ymin);
@@ -61,10 +108,10 @@ impl AABB {
     // 判断点是否在AABB内
     #[inline]
     pub fn contains(&self, x: f32, y: f32) -> bool {
-        self.x >= xmin && self.x <= xmax && self.y >= ymin && self.y <= ymax
+        x >= self.xmin && x <= self.xmax && y >= self.ymin && y <= self.ymax
     }
     // 判断2个AABB是否有重叠
-    pub fn check_crossed(&self, other: &Self) -> bool {
+    pub fn has_intersection(&self, other: &Self) -> bool {
         [
             (self.xmin, self.ymin),
             (self.xmin, self.ymax),
@@ -81,5 +128,19 @@ impl AABB {
             ]
             .into_iter()
             .any(|(x, y)| self.contains(x, y))
+    }
+
+    // 两个AABB的交集
+    pub fn get_intersection(&self, other: &Self) -> Option<AABB> {
+        if self.has_intersection(other) {
+            Some(AABB {
+                xmin: self.xmin.max(other.xmin),
+                xmax: self.xmax.min(other.xmax),
+                ymin: self.ymin.max(other.ymin),
+                ymax: self.ymax.min(other.ymax),
+            })
+        } else {
+            None
+        }
     }
 }
