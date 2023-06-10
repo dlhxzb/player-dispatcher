@@ -3,7 +3,6 @@ use map_server::server::Server;
 use common::proto::game_service::PlayerInfo;
 use common::proto::game_service::*;
 use common::proto::map_service::map_service_server::MapService;
-use common::proto::map_service::InternalAoeRequest;
 use common::AOE_MONEY;
 
 use tonic::IntoRequest;
@@ -15,24 +14,23 @@ async fn test_query() {
     // (-1,-1) (0,0) (1,1) (2,2)
     let mut players = (0..4)
         .map(|i| PlayerInfo {
-            id: i,
+            player_id: i,
             x: i as f32 - 1.0,
             y: i as f32 - 1.0,
             money: 0,
         })
         .collect::<Vec<_>>();
     for player in &players {
-        server
-            .internal_login(player.clone().into_request())
-            .await
-            .unwrap();
+        server.login(player.clone().into_request()).await.unwrap();
     }
     server
-        .internal_aoe(
-            InternalAoeRequest {
+        .aoe(
+            AoeRequest {
                 player_id: 1,
-                x: players[1].x,
-                y: players[1].y,
+                coord: Some(Coord {
+                    x: players[1].x,
+                    y: players[1].y,
+                }),
                 radius: 1.9,
             }
             .into_request(),

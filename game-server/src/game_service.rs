@@ -1,9 +1,10 @@
+use crate::data::*;
 use crate::dispatcher::Dispatcher;
 use crate::util::*;
 
 use common::proto::game_service::game_service_server::GameService;
 use common::proto::game_service::*;
-use common::proto::map_service::{ExportRequest, InternalAoeRequest};
+use common::proto::map_service::ExportRequest;
 use common::{MapErrUnknown, RPCResult, AABB};
 
 use ert::prelude::RunVia;
@@ -17,22 +18,18 @@ use std::collections::HashMap;
 impl GameService for Dispatcher {
     #[instrument(skip(self))]
     async fn login(&self, request: Request<PlayerInfo>) -> RPCResult<()> {
-        info!("entry");
+        info!("IN");
         let player = request.into_inner();
-        let player_id = player.id;
+        let player_id = player.player_id;
         let self = self.clone();
         async move {
             check_xy_range(player.x, player.y)?;
-            if !self.player_map.contains_key(&player.id) {
-                return Err(Status::already_exists(player.id.to_string()));
+            if !self.player_map.contains_key(&player.player_id) {
+                return Err(Status::already_exists(player.player_id.to_string()));
             }
             let server = self.get_server_of_coord(player.x, player.y).1.server;
 
-            server
-                .map_cli
-                .clone()
-                .internal_login(player.clone())
-                .await?;
+            server.game_cli.clone().login(player.clone()).await?;
             self.player_map
                 .insert(player_id, (server, player.x, player.y));
             Ok(Response::new(()))
@@ -44,10 +41,9 @@ impl GameService for Dispatcher {
     /// 根据正方形四个顶点，查找出对应的最多4个servers，给每个都发送aoe请求
     #[instrument(skip(self))]
     async fn aoe(&self, request: Request<AoeRequest>) -> RPCResult<()> {
-        debug!("entry");
+        debug!("IN");
         let AoeRequest {
-            id: player_id,
-            radius,
+            player_id, radius, ..
         } = request.into_inner();
         let (_, x, y) = self.get_server_of_player(&player_id).map_err_unknown()?;
         check_xy_range(x, y)?;
@@ -65,12 +61,11 @@ impl GameService for Dispatcher {
             .into_values()
             .map(|server| async move {
                 if let Err(e) = server
-                    .map_cli
+                    .game_cli
                     .clone()
-                    .internal_aoe(InternalAoeRequest {
+                    .aoe(AoeRequest {
                         player_id,
-                        x,
-                        y,
+                        coord: Some(Coord { x, y }),
                         radius,
                     })
                     .await
@@ -86,13 +81,9 @@ impl GameService for Dispatcher {
     // 移动目标在当前服务器之外的要导出用户到目标服务器
     #[instrument(skip(self))]
     async fn moving(&self, request: Request<MovingRequest>) -> RPCResult<Coord> {
-        debug!("entry");
+        debug!("IN");
         let request = request.into_inner();
-        let MovingRequest {
-            id: player_id,
-            dx,
-            dy,
-        } = request.clone();
+        let MovingRequest { player_id, dx, dy } = request.clone();
         let self = self.clone();
 
         // ert: serialized by player_id
@@ -128,9 +119,9 @@ impl GameService for Dispatcher {
                     .await?;
             }
             let Coord { x, y } = target_server
-                .map_cli
+                .game_cli
                 .clone()
-                .internal_moving(request)
+                .moving(request)
                 .await?
                 .into_inner();
             self.player_map.insert(player_id, (target_server, x, y));
@@ -142,9 +133,8 @@ impl GameService for Dispatcher {
 
     #[instrument(skip(self))]
     async fn query(&self, request: Request<QueryRequest>) -> RPCResult<QueryReply> {
-        debug!("entry");
+        debug!("IN");
         let QueryRequest {
-            id,
             xmin,
             xmax,
             ymin,
@@ -172,10 +162,9 @@ impl GameService for Dispatcher {
                     .get_intersection(&query_aabb)
                     .map(|aabb| async move {
                         server
-                            .map_cli
+                            .game_cli
                             .clone()
-                            .internal_query(QueryRequest {
-                                id,
+                            .query(QueryRequest {
                                 xmin: aabb.xmin,
                                 xmax: aabb.xmax,
                                 ymin: aabb.ymin,
@@ -204,15 +193,15 @@ impl GameService for Dispatcher {
 
     #[instrument(skip(self))]
     async fn logout(&self, request: Request<PlayerIdRequest>) -> RPCResult<()> {
-        info!("entry");
+        info!("IN");
         let request = request.into_inner();
-        let player_id = request.id;
+        let player_id = request.player_id;
         let self = self.clone();
 
         // ert: serialized by player_id
         async move {
             let (server, ..) = self.get_server_of_player(&player_id).map_err_unknown()?;
-            server.map_cli.clone().internal_logout(request).await
+            server.game_cli.clone().logout(request).await
         }
         .via_g(player_id)
         .await

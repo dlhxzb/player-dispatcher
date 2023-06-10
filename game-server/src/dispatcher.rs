@@ -1,6 +1,6 @@
+use crate::data::*;
 use crate::util::*;
 
-use common::proto::map_service::map_service_client::MapServiceClient;
 use common::{xy_to_zone_id, PlayerId, ZoneId, MAX_ZONE_DEPTH, ROOT_ZONE_ID};
 
 use anyhow::{Context, Result};
@@ -42,22 +42,9 @@ impl Deref for Dispatcher {
 
 impl Dispatcher {
     pub async fn new() -> Result<Self> {
-        let server_id = gen_server_id();
-        let addr = start_server().await;
         // TODO: 将zone等配置传递给server
-        let map_cli = MapServiceClient::connect(addr.clone()).await?;
-
+        let server = start_map_server(vec![ROOT_ZONE_ID]).await?;
         let zone_server_map = SkipMap::new();
-        let server = ServerInfo {
-            inner: ServerInfoInner {
-                server_id,
-                zones: vec![ROOT_ZONE_ID],
-                map_cli,
-                status: ServerStatus::Working,
-                addr,
-            }
-            .into(),
-        };
         zone_server_map.insert(
             ROOT_ZONE_ID,
             ZoneServers {

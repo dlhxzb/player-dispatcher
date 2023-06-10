@@ -5,14 +5,11 @@ import "game_service.proto";
 
 service MapService {
     rpc ExportPlayer (ExportRequest) returns (google.protobuf.Empty);
+    rpc ImportPlayer (game_service.PlayerInfo) returns (google.protobuf.Empty);
     rpc GetHeaviestZonePlayers (ZoneDepth) returns (ZonePlayersReply);
     rpc GetNPlayers (GetPlayersRequest) returns (GetPlayersReply);
     rpc GetOverhead (google.protobuf.Empty) returns (OverheadReply);
-    rpc InternalLogin (game_service.PlayerInfo) returns (google.protobuf.Empty);
-    rpc InternalLogout (game_service.PlayerIdRequest) returns (google.protobuf.Empty);
-    rpc InternalAoe (InternalAoeRequest) returns (google.protobuf.Empty);
-    rpc InternalMoving (game_service.MovingRequest) returns (game_service.Coord);
-    rpc InternalQuery (game_service.QueryRequest) returns (game_service.QueryReply);
+    rpc Shutdown (google.protobuf.Empty) returns (google.protobuf.Empty);
 }
 
 message ExportRequest {
@@ -31,7 +28,7 @@ message ZonePlayersReply {
 }
 
 message GetPlayersRequest {
-    uint64 n = 1;
+    uint32 n = 1;
 }
 
 message GetPlayersReply {
@@ -39,12 +36,5 @@ message GetPlayersReply {
 }
 
 message OverheadReply {
-    uint64 count = 1;
-}
-
-message InternalAoeRequest {
-    uint64 player_id = 1;
-    float x = 2;
-    float y = 3;
-    float radius = 4;
+    uint32 count = 1;
 }

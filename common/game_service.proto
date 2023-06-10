@@ -11,14 +11,14 @@ service GameService {
 }
 
 message PlayerInfo {
-   uint64 id = 1;
+   uint64 player_id = 1;
    float x = 2;
    float y = 3;
    uint64 money = 4;
 }
 
 message PlayerIdRequest {
-    uint64 id = 1;
+    uint64 player_id = 1;
 }
 
 message Coord {
@@ -28,22 +28,22 @@ message Coord {
 
 // delta x y
 message MovingRequest {
-   uint64 id = 1;
+   uint64 player_id = 1;
    float dx = 2;
    float dy = 3;
 }
 
 message AoeRequest {
-   uint64 id = 1;
+   uint64 player_id = 1;
    float radius = 2;
+   Coord coord = 3; // 外部调用不用传，传了也不用。内部字段。
 }
 
 message QueryRequest {
-   uint64 id = 1;
-   float xmin = 2;
-   float ymin = 3;
-   float xmax = 4;
-   float ymax = 5;   
+   float xmin = 1;
+   float ymin = 2;
+   float xmax = 3;
+   float ymax = 4;   
 }
 
 message QueryReply {

@@ -1,9 +1,8 @@
+mod data;
 mod dispatcher;
-mod game_impl;
+mod game_service;
 mod server_scaling;
 mod util;
-
-// pub use game_server::*;
 
 use common::proto::game_service::game_service_server::GameServiceServer;
 
@@ -12,9 +11,7 @@ use tracing::info;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .init();
+    tracing_subscriber::fmt().pretty().init();
     info!("starting");
     // Set ert worker count.
     ert::prelude::Router::new(10_000).set_as_global();
@@ -27,5 +24,5 @@ async fn main() {
         .await
         .unwrap();
 
-    info!("gRPC server start");
+    info!("exit");
 }

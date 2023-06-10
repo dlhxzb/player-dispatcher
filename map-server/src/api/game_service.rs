@@ -1,122 +1,24 @@
-use crate::server::Server;
+use crate::server::MapServer;
 
+use common::proto::game_service::game_service_server::GameService;
 use common::proto::game_service::*;
-use common::proto::map_service::map_service_client::MapServiceClient;
-use common::proto::map_service::map_service_server::MapService;
-use common::proto::map_service::*;
 use common::*;
 
-use itertools::Itertools;
 use rayon::prelude::*;
-use tonic::{async_trait, IntoRequest, Request, Response, Status};
+use tonic::{async_trait, Request, Response, Status};
 use tracing::*;
 
 #[async_trait]
-impl MapService for Server {
-    async fn export_player(&self, request: Request<ExportRequest>) -> RPCResult<()> {
-        info!("entry");
-        let self = self.clone();
-        tokio::spawn(async move {
-            let ExportRequest {
-                player_id,
-                addr,
-                coord,
-            } = request.into_inner();
-            let mut target_cli = {
-                let mut guard = self.export_cli.lock().await;
-                match &*guard {
-                    Some((saved_addr, saved_cli)) if saved_addr == &addr => saved_cli.clone(),
-                    _ => {
-                        let map_cli = MapServiceClient::connect(addr.clone())
-                            .await
-                            .map_err_unknown()?;
-                        *guard = Some((addr, map_cli.clone()));
-                        map_cli
-                    }
-                }
-            };
-            let mut player = self.get_player_info(&player_id).map_err_unknown()?;
-            if let Some(Coord { x, y }) = coord {
-                player.x = x;
-                player.y = y;
-            }
-            target_cli.internal_login(player).await?;
-            self.internal_logout(PlayerIdRequest { id: player_id }.into_request())
-                .await
-        })
-        .await
-        .map_err_unknown()?
-    }
-
-    // 找到人数最多的zone，只有一个zone时从4个子zone中找
-    async fn get_heaviest_zone_players(
-        &self,
-        request: Request<ZoneDepth>,
-    ) -> RPCResult<ZonePlayersReply> {
-        info!("entry");
-        let depth = request.into_inner().depth;
-        let self = self.clone();
-        tokio::spawn(async move {
-            let (zone_id, player_ids) = self
-                .player_map
-                .iter()
-                .map(|entry| (*entry.key(), (entry.value().x, entry.value().y)))
-                .into_group_map_by(|(_id, (x, y))| xy_to_zone_id(*x, *y, depth))
-                .into_iter()
-                .map(|(zone_id, value)| {
-                    let (player_ids, _): (Vec<_>, Vec<_>) = value.into_iter().unzip();
-                    (zone_id, player_ids)
-                })
-                .max_by_key(|(_zone_id, ids)| ids.len())
-                .unwrap_or_default();
-            info!("zone_id:{}, players:{}", zone_id, player_ids.len());
-            Ok(Response::new(ZonePlayersReply {
-                zone_id,
-                player_ids,
-            }))
-        })
-        .await
-        .map_err_unknown()?
-    }
-
-    async fn get_n_players(
-        &self,
-        request: Request<GetPlayersRequest>,
-    ) -> RPCResult<GetPlayersReply> {
-        info!("entry");
-        let n = request.into_inner().n;
-        let self = self.clone();
-        tokio::spawn(async move {
-            let mut count = 0;
-            let mut player_ids = Vec::with_capacity(n as usize);
-            let mut iter = self.player_map.iter();
-            while let Some(entry) = iter.next() {
-                if count == n {
-                    break;
-                }
-                player_ids.push(*entry.key());
-                count += 1;
-            }
-            Ok(Response::new(GetPlayersReply { player_ids }))
-        })
-        .await
-        .map_err_unknown()?
-    }
-    async fn get_overhead(&self, _request: Request<()>) -> RPCResult<OverheadReply> {
-        info!("entry");
-        let count = self.player_map.len() as u64;
-        Ok(Response::new(OverheadReply { count }))
-    }
-
+impl GameService for MapServer {
     #[instrument(skip(self))]
-    async fn internal_login(&self, request: Request<PlayerInfo>) -> RPCResult<()> {
-        info!("entry");
+    async fn login(&self, request: Request<PlayerInfo>) -> RPCResult<()> {
+        info!("IN");
         let self = self.clone();
         tokio::spawn(async move {
             let player = request.into_inner();
-            let player_id = player.id;
-            if self.player_map.contains_key(&player.id) {
-                return Err(Status::already_exists(player.id.to_string()));
+            let player_id = player.player_id;
+            if self.player_map.contains_key(&player.player_id) {
+                return Err(Status::already_exists(player.player_id.to_string()));
             }
 
             let grid = xy_to_grid(player.x, player.y);
@@ -132,11 +34,11 @@ impl MapService for Server {
     }
 
     #[instrument(skip(self))]
-    async fn internal_logout(&self, request: Request<PlayerIdRequest>) -> RPCResult<()> {
-        info!("entry");
+    async fn logout(&self, request: Request<PlayerIdRequest>) -> RPCResult<()> {
+        info!("IN");
         let self = self.clone();
         tokio::spawn(async move {
-            let id = request.into_inner().id;
+            let id = request.into_inner().player_id;
             self.player_map.remove(&id).map(|entry| {
                 let p = entry.value();
                 let grid = xy_to_grid(p.x, p.y);
@@ -149,15 +51,11 @@ impl MapService for Server {
     }
 
     #[instrument(skip(self))]
-    async fn internal_moving(&self, request: Request<MovingRequest>) -> RPCResult<Coord> {
-        debug!("entry");
+    async fn moving(&self, request: Request<MovingRequest>) -> RPCResult<Coord> {
+        debug!("IN");
         let self = self.clone();
         tokio::spawn(async move {
-            let MovingRequest {
-                id: player_id,
-                dx,
-                dy,
-            } = request.into_inner();
+            let MovingRequest { player_id, dx, dy } = request.into_inner();
             let mut player = self.get_player_info(&player_id).map_err_unknown()?;
             let x0 = player.x;
             let y0 = player.y;
@@ -200,12 +98,11 @@ impl MapService for Server {
 
     // 先找经过的grid，再逐点过滤
     #[instrument(skip(self))]
-    async fn internal_query(&self, request: Request<QueryRequest>) -> RPCResult<QueryReply> {
-        debug!("entry");
+    async fn query(&self, request: Request<QueryRequest>) -> RPCResult<QueryReply> {
+        debug!("IN");
         let self = self.clone();
         tokio::spawn(async move {
             let QueryRequest {
-                id: _player_id,
                 xmin,
                 xmax,
                 ymin,
@@ -263,16 +160,17 @@ impl MapService for Server {
     }
 
     #[instrument(skip(self))]
-    async fn internal_aoe(&self, request: Request<InternalAoeRequest>) -> RPCResult<()> {
-        debug!("entry");
+    async fn aoe(&self, request: Request<AoeRequest>) -> RPCResult<()> {
+        debug!("IN");
         let self = self.clone();
         tokio::spawn(async move {
-            let InternalAoeRequest {
+            let AoeRequest {
                 player_id,
-                x,
-                y,
+                coord: Some(Coord { x, y }),
                 radius,
-            } = request.into_inner();
+            } = request.into_inner() else {
+                return Err(Status::data_loss("Coord { x, y }"));
+            };
             AABB {
                 xmin: x - radius,
                 xmax: x + radius,
@@ -303,7 +201,7 @@ impl MapService for Server {
             .for_each(|mut p| {
                 if (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y) <= radius * radius {
                     p.money += AOE_MONEY;
-                    self.player_map.insert(p.id, p);
+                    self.player_map.insert(p.player_id, p);
                 }
             });
 

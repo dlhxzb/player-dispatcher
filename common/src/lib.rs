@@ -7,17 +7,18 @@ pub type RPCResult<T> = Result<Response<T>, Status>;
 pub type PlayerId = u64;
 pub type ZoneId = u64;
 pub type ServerId = u32;
+pub type GridId = (usize, usize);
 
 // 世界地图尺寸
 pub const WORLD_X_MAX: f32 = 1_000_000.0;
 pub const WORLD_Y_MAX: f32 = 1_000_000.0;
 pub const WORLD_X_MIN: f32 = -WORLD_X_MAX;
 pub const WORLD_Y_MIN: f32 = -WORLD_Y_MAX;
-pub const MAX_PLAYER: u64 = 1000; // 服务器最大用户数，触发扩容
-pub const MIN_PLAYER: u64 = MAX_PLAYER / 4; // 服务器最小用户数，触发缩容
+pub const MAX_PLAYER: u32 = 1000; // 服务器最大用户数，触发扩容
+pub const MIN_PLAYER: u32 = MAX_PLAYER / 4; // 服务器最小用户数，触发缩容
 pub const MAX_ZONE_DEPTH: u32 = 10; // 四叉树最大深度
 pub const GRID_LENGTH: usize = 100; // Grid边长
-pub const AOE_MONEY: u64 = 1_u64; // 每次aoe给周边玩家增加的钱数
+pub const AOE_MONEY: u64 = 1; // 每次aoe给周边玩家增加的钱数
 pub const ROOT_ZONE_ID: ZoneId = 1;
 
 pub trait MapErrUnknown {
@@ -77,7 +78,7 @@ pub fn zone_depth(id: ZoneId) -> u32 {
 }
 
 #[inline]
-pub fn xy_to_grid(x: f32, y: f32) -> (usize, usize) {
+pub fn xy_to_grid(x: f32, y: f32) -> GridId {
     (
         (x - WORLD_X_MIN) as usize / GRID_LENGTH,
         (y - WORLD_Y_MIN) as usize / GRID_LENGTH,
@@ -135,7 +136,7 @@ impl AABB {
     }
 
     // 获取AABB范围内所有grids
-    pub fn get_grids_in_aabb(&self) -> Vec<(usize, usize)> {
+    pub fn get_grids_in_aabb(&self) -> Vec<GridId> {
         let grid_min = xy_to_grid(self.xmin, self.ymin);
         let grid_max = xy_to_grid(self.xmax, self.ymax);
         let mut set = Vec::new();
@@ -146,12 +147,14 @@ impl AABB {
         }
         set
     }
+
     // 判断点是否在AABB内
     #[inline]
     pub fn contains(&self, x: f32, y: f32) -> bool {
         x >= self.xmin && x <= self.xmax && y >= self.ymin && y <= self.ymax
     }
-    // 判断2个AABB是否有重叠
+
+    // 判断2个AABB是否有交集
     pub fn has_intersection(&self, other: &Self) -> bool {
         [
             (self.xmin, self.ymin),

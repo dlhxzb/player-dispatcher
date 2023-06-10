@@ -1,50 +1,61 @@
+use crate::data::*;
 use crate::dispatcher::Dispatcher;
 use crate::util::*;
 
-use common::proto::map_service::{ExportRequest, ZoneDepth, ZonePlayersReply};
-use common::{zone_depth, PlayerId, MAX_ZONE_DEPTH};
+use common::proto::map_service::{ExportRequest, GetPlayersRequest, ZoneDepth, ZonePlayersReply};
+use common::*;
 
-use anyhow::{ensure, Result};
+use anyhow::{Context, Result};
 use ert::prelude::RunVia;
 use futures::StreamExt;
 use tonic::async_trait;
-use tracing::error;
+use tracing::*;
+
+use std::collections::HashMap;
 
 #[async_trait]
 pub trait ServerScaling {
-    /// 扩容
-    async fn expand_overload_server(&self, server: &ServerInfo) -> Result<()>;
-    /// 缩容
-    async fn reduce_idle_server(&self, server: &ServerInfo) -> Result<()>;
-    async fn get_overload_server(&self) -> Result<Option<ServerInfo>>;
-    async fn get_idle_server(&self) -> Result<Option<ServerInfo>>;
+    /// 扩容，叶子结点展开
+    async fn expand_overload_server(&self, server: &ServerInfo) -> Result<bool>;
+    /// 缩容，叶子结点结合
+    async fn close_idle_server(&self, server: &ServerInfo, merge_to: &ServerInfo) -> Result<()>;
+    async fn get_merge_target_server(
+        &self,
+        server: &ServerInfo,
+        overhead_map: &HashMap<ServerId, u32>,
+    ) -> Result<Option<ServerInfo>>;
     async fn transfer_players(
         &self,
         source_server: &ServerInfo,
         target_server: &ServerInfo,
         players: &[PlayerId],
     ) -> Result<()>;
-    async fn start_server() -> Result<ServerInfo>;
-    async fn stop_server(addr: &str) -> Result<()>;
 }
 
 /// API级别不能保证并发原子，应避免多个线程同时调用，以下API仅在monitor单线程中使用
 #[async_trait]
 impl ServerScaling for Dispatcher {
-    // 管理多个同父叶子节点时，挑出最大的扩容
-    // 只管理一个叶子节点时，深度+1，分出4个叶子结点，把最大的扩容
-    async fn expand_overload_server(&self, server: &ServerInfo) -> Result<()> {
+    /// 管理多个同父叶子节点时，挑出最大的扩容
+    /// 只管理一个叶子节点时，深度+1，分出4个叶子结点，把最大的分配到新服务器
+    /// 只有一个节点且达最大深度则无法扩展，直接返回false
+    /// 1. 新旧服务器同时注册到要导出的zone(server + exporting_server)
+    /// 2. 用户导出(此时对于该zone的范围请求(aoe/query)会送到两台服务器)
+    /// 3. 旧服务器取消导出zone的注册(exporting=None)
+    async fn expand_overload_server(&self, server: &ServerInfo) -> Result<bool> {
         let mut depth = zone_depth(server.zones[0]);
         let only_one_zone = server.zones.len() == 1;
-        ensure!(
-            !(only_one_zone && depth == MAX_ZONE_DEPTH),
-            "Can not expand only one zone of MAX_ZONE_DEPTH"
-        );
-        let hd = tokio::spawn(Self::start_server());
+        if only_one_zone && depth == MAX_ZONE_DEPTH {
+            info!(
+                "Can not expand server:{} for only one zone of MAX_ZONE_DEPTH",
+                server.server_id
+            );
+            return Ok(false);
+        }
         if only_one_zone {
             // 只管理一个叶子节点时，深度+1，分出4个叶子结点
             depth += 1;
         };
+        // 从server拆分出人数最多的zone
         let ZonePlayersReply {
             zone_id: new_zone_id,
             player_ids,
@@ -54,7 +65,9 @@ impl ServerScaling for Dispatcher {
             .get_heaviest_zone_players(ZoneDepth { depth })
             .await?
             .into_inner();
-        let new_server = hd.await??;
+        // 启动一台新server
+        let new_server = start_map_server(vec![new_zone_id]).await?;
+        // 将导出server和导入server都注册到zone
         self.zone_server_map.insert(
             new_zone_id,
             ZoneServers {
@@ -62,16 +75,16 @@ impl ServerScaling for Dispatcher {
                 exporting_server: Some(server.clone()),
             },
         );
-
+        // 获得原server拆分后剩下的zone
         let zones: Vec<_> = if only_one_zone {
-            // 改成3个叶子节点，先删原节点
+            // 只有一个zone时，先注销原节点，拆分成4个叶子节点，去掉导出的
             self.zone_server_map.remove(&server.zones[0]);
             get_child_zone_ids(server.zones[0])
                 .into_iter()
                 .filter(|id| id != &new_zone_id)
                 .collect()
         } else {
-            // 从原节点中去除1个
+            // 原server有多个zone，去掉导出的
             server
                 .zones
                 .iter()
@@ -79,22 +92,20 @@ impl ServerScaling for Dispatcher {
                 .copied()
                 .collect()
         };
+        let mut inner = (*server.inner).clone();
+        inner.zones = zones.clone();
         let update_server = ZoneServers {
             server: ServerInfo {
-                inner: ServerInfoInner {
-                    server_id: server.server_id,
-                    zones: zones.clone(),
-                    map_cli: server.map_cli.clone(),
-                    status: ServerStatus::Working,
-                    addr: server.addr.clone(),
-                }
-                .into(),
+                inner: inner.into(),
             },
             exporting_server: None,
         };
+        // 重新注册原server拆分剩下的zone
         zones.into_iter().for_each(|zone_id| {
             self.zone_server_map.insert(zone_id, update_server.clone());
         });
+
+        // 用户导出
         self.transfer_players(&server, &new_server, &player_ids)
             .await?;
 
@@ -106,17 +117,128 @@ impl ServerScaling for Dispatcher {
                 exporting_server: None,
             },
         );
-        Ok(())
+        Ok(true)
     }
 
-    async fn reduce_idle_server(&self, _server: &ServerInfo) -> Result<()> {
-        todo!()
+    // 关闭负载小的服务器，将用户转移到其它同父叶子节点服务器。若因合并后人数超限无法合并则返回false
+    #[instrument(skip_all, fields(server_id = %server.server_id))]
+    async fn get_merge_target_server(
+        &self,
+        server: &ServerInfo,
+        overhead_map: &HashMap<ServerId, u32>,
+    ) -> Result<Option<ServerInfo>> {
+        let current_count = overhead_map
+            .get(&server.server_id)
+            .context("server_id not in overhead_map")?;
+        // 获取同父其它叶子节点的最闲服务器
+        let (bro_count, bro_server) = get_child_zone_ids(server.zones[0] / 10)
+            .into_iter()
+            .filter(|id| !server.zones.contains(id))
+            .filter_map(|id| {
+                self.zone_server_map.get(&id).map(|entry| {
+                    let server = entry.value().server.clone();
+                    (server.server_id, server)
+                })
+            })
+            .collect::<HashMap<_, _>>()
+            .into_values()
+            .filter_map(|server| {
+                overhead_map
+                    .get(&server.server_id)
+                    .map(|count| (*count, server))
+            })
+            .min_by_key(|(count, _)| *count)
+            .context("No brother leaf found")?;
+
+        info!(
+            "Idle server:{} with {current_count} players, min brother server{} with {bro_count}",
+            server.server_id, bro_server.server_id
+        );
+        if current_count + bro_count >= MAX_PLAYER {
+            Ok(None)
+        } else {
+            Ok(Some(bro_server))
+        }
     }
-    async fn get_overload_server(&self) -> Result<Option<ServerInfo>> {
-        todo!()
-    }
-    async fn get_idle_server(&self) -> Result<Option<ServerInfo>> {
-        todo!()
+
+    #[instrument(skip_all, fields(server_id = %server.server_id, export_to = %export_to.server_id))]
+    async fn close_idle_server(&self, server: &ServerInfo, export_to: &ServerInfo) -> Result<()> {
+        info!("IN");
+        const FULL_LEAVES: usize = 4; // 满叶子结点为4个
+
+        let mut export_inner = (*export_to.inner).clone();
+        export_inner.zones.append(&mut server.zones.clone());
+        let exported_server = ServerInfo {
+            inner: export_inner.clone().into(),
+        };
+        // 将关闭server和接收server都注册到zone
+        server.zones.iter().for_each(|zone_id| {
+            self.zone_server_map.insert(
+                *zone_id,
+                ZoneServers {
+                    server: exported_server.clone(),
+                    exporting_server: Some(server.clone()),
+                },
+            );
+        });
+        // 更新接收server的原本zone的服务器信息
+        export_to.zones.iter().for_each(|zone_id| {
+            self.zone_server_map.insert(
+                *zone_id,
+                ZoneServers {
+                    server: exported_server.clone(),
+                    exporting_server: None,
+                },
+            );
+        });
+        // 用户导出
+        loop {
+            let players = server
+                .map_cli
+                .clone()
+                .get_n_players(GetPlayersRequest { n: MAX_PLAYER })
+                .await?
+                .into_inner()
+                .player_ids;
+            if players.len() == 0 {
+                break;
+            }
+            self.transfer_players(server, export_to, &players).await?;
+        }
+
+        if exported_server.zones.len() == FULL_LEAVES {
+            // 4个叶子在同一个server，合并成父节点。先插父节点，再删叶子
+            let zones = exported_server.zones.clone();
+            export_inner.zones = vec![zones[0] / 10];
+            self.zone_server_map.insert(
+                zones[0] / 10,
+                ZoneServers {
+                    server: ServerInfo {
+                        inner: export_inner.into(),
+                    },
+                    exporting_server: None,
+                },
+            );
+            zones.iter().for_each(|zone_id| {
+                self.zone_server_map.remove(zone_id);
+            });
+        } else {
+            // 完成后取消exporting_server设置
+            server.zones.iter().for_each(|zone_id| {
+                self.zone_server_map.insert(
+                    *zone_id,
+                    ZoneServers {
+                        server: exported_server.clone(),
+                        exporting_server: None,
+                    },
+                );
+            });
+        };
+
+        shutdown_map_server(server).await?;
+
+        info!("OUT");
+        Ok(())
     }
 
     // 把player_id取来，逐个让map-server导出。这里要用ert将用户串行，避免与game api数据竞争
@@ -148,12 +270,12 @@ impl ServerScaling for Dispatcher {
                 .map_err(|e| error!(?e));
             })
             .await;
+        info!(
+            "Transfered {} players from server:{} to {}",
+            players.len(),
+            source_server.server_id,
+            target_server.server_id
+        );
         Ok(())
-    }
-    async fn start_server() -> Result<ServerInfo> {
-        todo!()
-    }
-    async fn stop_server(_addr: &str) -> Result<()> {
-        todo!()
     }
 }

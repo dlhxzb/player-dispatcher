@@ -11,19 +11,16 @@ async fn test_moving() {
     crate::init_log();
     let server = Server::new(1);
     let player = PlayerInfo {
-        id: 1,
+        player_id: 1,
         x: 0.0,
         y: 0.0,
         money: 0,
     };
+    server.login(player.clone().into_request()).await.unwrap();
     server
-        .internal_login(player.clone().into_request())
-        .await
-        .unwrap();
-    server
-        .internal_moving(
+        .moving(
             MovingRequest {
-                id: 1,
+                player_id: 1,
                 dx: 1.0,
                 dy: -1.9,
             }
@@ -33,7 +30,7 @@ async fn test_moving() {
         .unwrap();
     let player = server.player_map.get(&1).unwrap().value().clone();
     let expect = PlayerInfo {
-        id: 1,
+        player_id: 1,
         x: 1.0,
         y: -1.9,
         money: 0,

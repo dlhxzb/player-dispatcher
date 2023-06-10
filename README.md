@@ -25,8 +25,8 @@
   - [ ] 内部机能
     - [ ] overload monitor，监视各个地图服务器负载，发起扩缩容
     - [x] 主导扩容
-    - [ ] 主导缩容
-- [ ] map-server
+    - [x] 主导缩容
+- [x] map-server
   - [x] game API impl
     - [x] login
     - [x] logout
