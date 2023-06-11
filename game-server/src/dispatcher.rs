@@ -57,7 +57,7 @@ impl Dispatcher {
 
         Ok(Self {
             inner: DispatcherInner {
-                zone_server_map: SkipMap::new(),
+                zone_server_map,
                 player_map: SkipMap::new().into(),
             }
             .into(),
@@ -97,10 +97,12 @@ impl Dispatcher {
             .collect()
     }
 
+    #[instrument(skip_all)]
     pub async fn scaling_moniter(self) {
         use tokio::time::{sleep, Duration};
 
         loop {
+            info!("checking");
             let server_map = self
                 .get_all_servers()
                 .into_iter()
