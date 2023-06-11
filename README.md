@@ -15,15 +15,15 @@
   - [x] game proto 设计
   - [x] map proto 设计
   - [x] 并发安全设计
-- [ ] dispatcher: 
+- [x] dispatcher: 
   - [x] game API impl
     - [x] login
     - [x] logout
     - [x] aoe
     - [x] moving
     - [x] query
-  - [ ] 内部机能
-    - [ ] overload monitor，监视各个地图服务器负载，发起扩缩容
+  - [x] 内部机能
+    - [x] scaling monitor，监视各个地图服务器负载，发起扩缩容
     - [x] 主导扩容
     - [x] 主导缩容
 - [x] map-server
@@ -37,7 +37,7 @@
     - [x] 扩容：导出最大zone或子zone用户到指定server
     - [x] 缩容：导出全部用户到指定server
 - 其它
-  - [ ] rayon加速  `doing`
+  - [x] rayon加速
   - [ ] config
   - [ ] test  `doing`
   - [ ] example
@@ -49,21 +49,18 @@
     - [ ] ~~K-D tree叶子容量数设置调优~~
   - [ ] 写一个epoch封装的无锁K-D tree
 
-# 性能与并发一致性
-### dispatcher
+# 性能与数据竞争
 考虑到写请求不少，不太符合RwLock的应用场景。
 为实现无锁，使用跳表（Skiplist）来记录服务器清单、玩家清单。  
-另外跳表也无法保证先读后写是原子的，除非上锁，否则存在数据竞争。例如同时两次请求给玩家money+1，可能最后只+1。  
+可以保证内存操作原子，但无法保证业务上先读后写也是原子的，除非上锁，否则存在数据竞争。  
+例如同时两次请求给玩家money+1，可能最后只+1。  
   
-解决方案：考虑以玩家为单位将请求串行起来（ert crate）  
+目前出于性能考虑，仅将目标为单个玩家的请求与数据转移串行起来（login/out,moving），使用ert crate。  
+对于aoe与query暂时允许有遗漏。    
 
 对服务器来说，在monitor线程中串行，一次只做一个扩缩容操作
 
-不影响一致性前提下尽量并发/并行，for_each_concurrent + Rayon
-
-### map-server
-打算用kd-tree作为空间加速结构，但是现有的kd-tree crate并不能无锁并发，如果有时间可以用crossbeam-epoch封装一个，
-但是现在可能要用RwLock了，这样一来服务器人数就不能太多了，频繁陷入内核调用性能堪忧啊！！！。
+没有数据竞争的情况下尽量并发/并行，for_each_concurrent + Rayon
 
 # 加速结构
 ## Dispatcher四叉树

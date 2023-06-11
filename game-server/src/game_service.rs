@@ -5,7 +5,7 @@ use crate::util::*;
 use common::proto::game_service::game_service_server::GameService;
 use common::proto::game_service::*;
 use common::proto::map_service::ExportRequest;
-use common::{MapErrUnknown, RPCResult, AABB};
+use common::{ErrHandle, RPCResult, AABB};
 
 use ert::prelude::RunVia;
 use rayon::prelude::*;
@@ -60,7 +60,7 @@ impl GameService for Dispatcher {
             .collect::<HashMap<_, _>>()
             .into_values()
             .map(|server| async move {
-                if let Err(e) = server
+                let _ = server
                     .game_cli
                     .clone()
                     .aoe(AoeRequest {
@@ -69,9 +69,7 @@ impl GameService for Dispatcher {
                         radius,
                     })
                     .await
-                {
-                    error!(?e);
-                }
+                    .log_err();
             });
         futures::future::join_all(tasks).await;
 
@@ -178,13 +176,7 @@ impl GameService for Dispatcher {
         let infos = futures::future::join_all(tasks)
             .await
             .into_iter()
-            .filter_map(|res| match res {
-                Ok(infos) => Some(infos),
-                Err(e) => {
-                    error!(?e);
-                    None
-                }
-            })
+            .filter_map(|res| res.log_err().ok())
             .flatten()
             .collect();
 

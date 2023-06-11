@@ -7,11 +7,16 @@ use common::proto::map_service::*;
 use common::*;
 
 use itertools::Itertools;
+use once_cell::sync::OnceCell;
+use tokio::sync::oneshot;
 use tonic::{async_trait, IntoRequest, Request, Response};
 use tracing::*;
 
+pub static mut SHUTDOWN_TX: OnceCell<oneshot::Sender<()>> = OnceCell::new();
+
 #[async_trait]
 impl MapService for MapServer {
+    #[instrument(skip(self))]
     async fn export_player(&self, request: Request<ExportRequest>) -> RPCResult<()> {
         info!("IN");
         let self = self.clone();
@@ -35,11 +40,14 @@ impl MapService for MapServer {
         .map_err_unknown()?
     }
 
+    #[instrument(skip(self))]
     async fn import_player(&self, request: Request<PlayerInfo>) -> RPCResult<()> {
+        info!("IN");
         self.login(request).await
     }
 
     // 找到人数最多的zone，只有一个zone时从4个子zone中找
+    #[instrument(skip(self))]
     async fn get_heaviest_zone_players(
         &self,
         request: Request<ZoneDepth>,
@@ -70,36 +78,45 @@ impl MapService for MapServer {
         .map_err_unknown()?
     }
 
+    #[instrument(skip(self))]
     async fn get_n_players(
         &self,
         request: Request<GetPlayersRequest>,
     ) -> RPCResult<GetPlayersReply> {
         info!("IN");
-        let n = request.into_inner().n;
+        let n = request.into_inner().n as usize;
         let self = self.clone();
         tokio::spawn(async move {
-            let mut count = 0;
-            let mut player_ids = Vec::with_capacity(n as usize);
-            let mut iter = self.player_map.iter();
-            while let Some(entry) = iter.next() {
-                if count == n {
-                    break;
-                }
-                player_ids.push(*entry.key());
-                count += 1;
-            }
+            let player_ids = self
+                .player_map
+                .iter()
+                .take(n)
+                .map(|entry| *entry.key())
+                .collect();
             Ok(Response::new(GetPlayersReply { player_ids }))
         })
         .await
         .map_err_unknown()?
     }
+
+    #[instrument(skip_all)]
     async fn get_overhead(&self, _request: Request<()>) -> RPCResult<OverheadReply> {
         info!("IN");
         let count = self.player_map.len() as u32;
         Ok(Response::new(OverheadReply { count }))
     }
 
+    #[instrument(skip_all)]
     async fn shutdown(&self, _request: Request<()>) -> RPCResult<()> {
-        todo!()
+        use tokio::time::{sleep, Duration};
+
+        info!("IN");
+        tokio::spawn(async {
+            sleep(Duration::from_millis(100)).await;
+            unsafe {
+                SHUTDOWN_TX.take().unwrap().send(()).unwrap();
+            }
+        });
+        Ok(Response::new(()))
     }
 }

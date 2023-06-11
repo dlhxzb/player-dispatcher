@@ -1,10 +1,12 @@
 use crate::data::*;
+use crate::server_scaling::ServerScaling;
 use crate::util::*;
 
-use common::{xy_to_zone_id, PlayerId, ZoneId, MAX_ZONE_DEPTH, ROOT_ZONE_ID};
+use common::*;
 
 use anyhow::{Context, Result};
 use crossbeam_skiplist::SkipMap;
+use tracing::*;
 
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -19,7 +21,7 @@ use std::sync::Arc;
 /// # 并发读写保证：
 /// ## zone_server_map
 /// * 只有一个线程在增删server；
-/// * 删除前通过ServerStatus::Closing来拒绝新增用户；
+/// * 删除前通过转移到exporting_server来拒绝新增用户；
 /// * 删除时用户已清零，没有并发访问了
 /// ## player_map
 /// * API以用户为单位串行
@@ -93,5 +95,47 @@ impl Dispatcher {
             .collect::<HashMap<_, _>>()
             .into_values()
             .collect()
+    }
+
+    pub async fn scaling_moniter(self) {
+        use tokio::time::{sleep, Duration};
+
+        loop {
+            let server_map = self
+                .get_all_servers()
+                .into_iter()
+                .map(|s| (s.server_id, s))
+                .collect::<HashMap<_, _>>();
+            let mut overhead_map = HashMap::with_capacity(server_map.len());
+            for server in server_map.values() {
+                let _ = server
+                    .map_cli
+                    .clone()
+                    .get_overhead(())
+                    .await
+                    .map(|res| overhead_map.insert(server.server_id, res.into_inner().count))
+                    .log_err();
+            }
+            for (server_id, &overhead) in &overhead_map {
+                info!(?server_id, ?overhead);
+                if overhead >= MAX_PLAYER {
+                    let _ = self
+                        .expand_overload_server(server_map.get(server_id).unwrap())
+                        .await
+                        .log_err();
+                }
+                if overhead <= MIN_PLAYER {
+                    let server = server_map.get(server_id).unwrap();
+                    if let Ok(Some(export_to)) = self
+                        .get_merge_target_server(server, &overhead_map)
+                        .log_err()
+                    {
+                        let _ = self.close_idle_server(server, &export_to).await.log_err();
+                    }
+                }
+            }
+
+            sleep(Duration::from_secs(10)).await;
+        }
     }
 }

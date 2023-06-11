@@ -9,7 +9,7 @@ crossbeam-skiplist = "0.1"
 ert = { git = "https://github.com/dlhxzb/ert.git", branch = "chase-tokio-1" }
 futures = "0.3"
 rayon = "1.7.0"
-tokio = { version = "1.28", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.28", features = ["macros", "rt-multi-thread", "time"] }
 tonic = "0.9"
 tracing = "0.1.37"
 tracing-subscriber = "0.3.17"

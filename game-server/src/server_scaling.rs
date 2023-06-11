@@ -19,7 +19,8 @@ pub trait ServerScaling {
     async fn expand_overload_server(&self, server: &ServerInfo) -> Result<bool>;
     /// 缩容，叶子结点结合
     async fn close_idle_server(&self, server: &ServerInfo, merge_to: &ServerInfo) -> Result<()>;
-    async fn get_merge_target_server(
+    /// 在给定overhead_map中找到一个合适的缩容导入服务器
+    fn get_merge_target_server(
         &self,
         server: &ServerInfo,
         overhead_map: &HashMap<ServerId, u32>,
@@ -41,7 +42,9 @@ impl ServerScaling for Dispatcher {
     /// 1. 新旧服务器同时注册到要导出的zone(server + exporting_server)
     /// 2. 用户导出(此时对于该zone的范围请求(aoe/query)会送到两台服务器)
     /// 3. 旧服务器取消导出zone的注册(exporting=None)
+    #[instrument(skip_all, fields(server_id = %server.server_id))]
     async fn expand_overload_server(&self, server: &ServerInfo) -> Result<bool> {
+        info!("IN");
         let mut depth = zone_depth(server.zones[0]);
         let only_one_zone = server.zones.len() == 1;
         if only_one_zone && depth == MAX_ZONE_DEPTH {
@@ -117,12 +120,14 @@ impl ServerScaling for Dispatcher {
                 exporting_server: None,
             },
         );
+
+        info!("OUT");
         Ok(true)
     }
 
     // 关闭负载小的服务器，将用户转移到其它同父叶子节点服务器。若因合并后人数超限无法合并则返回false
     #[instrument(skip_all, fields(server_id = %server.server_id))]
-    async fn get_merge_target_server(
+    fn get_merge_target_server(
         &self,
         server: &ServerInfo,
         overhead_map: &HashMap<ServerId, u32>,
@@ -267,7 +272,7 @@ impl ServerScaling for Dispatcher {
                 }
                 .via_g(player_id)
                 .await
-                .map_err(|e| error!(?e));
+                .log_err();
             })
             .await;
         info!(

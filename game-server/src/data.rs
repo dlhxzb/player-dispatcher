@@ -7,11 +7,6 @@ use tonic::transport::Channel;
 use std::ops::Deref;
 use std::sync::Arc;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum ServerStatus {
-    Working,
-    Closing,
-}
 #[derive(Clone)]
 pub struct ServerInfo {
     pub inner: Arc<ServerInfoInner>,
@@ -30,7 +25,6 @@ pub struct ServerInfoInner {
     pub zones: Vec<ZoneId>,
     pub map_cli: MapServiceClient<Channel>,
     pub game_cli: GameServiceClient<Channel>,
-    pub status: ServerStatus,
     pub addr: String,
 }
 

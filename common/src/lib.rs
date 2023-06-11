@@ -21,18 +21,31 @@ pub const GRID_LENGTH: usize = 100; // Grid边长
 pub const AOE_MONEY: u64 = 1; // 每次aoe给周边玩家增加的钱数
 pub const ROOT_ZONE_ID: ZoneId = 1;
 
-pub trait MapErrUnknown {
+pub const GAME_PORT_ENV_NAME: &'static str = "GAME_SERVER_PORT";
+pub const MAP_PORT_ENV_NAME: &'static str = "MAP_SERVER_PORT";
+pub const DEFAULT_GAME_PORT: u32 = 48800;
+pub const DEFAULT_MAP_PORT: u32 = 50000;
+
+pub trait ErrHandle {
     type S;
     fn map_err_unknown(self) -> std::result::Result<Self::S, Status>;
+    fn log_err(self) -> std::result::Result<Self::S, ()>;
 }
 
-impl<T, E: std::fmt::Debug> MapErrUnknown for Result<T, E> {
+impl<T, E: std::fmt::Debug> ErrHandle for Result<T, E> {
     type S = T;
     fn map_err_unknown(self) -> Result<Self::S, Status> {
         self.map_err(|e| {
             let s = format!("{e:?}");
             log::error!("{}", s);
             Status::unknown(s)
+        })
+    }
+
+    fn log_err(self) -> std::result::Result<Self::S, ()> {
+        self.map_err(|e| {
+            let s = format!("{e:?}");
+            log::error!("{}", s);
         })
     }
 }

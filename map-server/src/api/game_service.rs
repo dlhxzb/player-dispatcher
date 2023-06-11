@@ -132,14 +132,9 @@ impl GameService for MapServer {
                 grids
                     .par_iter()
                     .filter_map(|grid| {
-                        self.grid_player_map.get(grid).map(|entry| {
-                            entry
-                                .value()
-                                // .clone()
-                                .iter()
-                                .map(|id| *id)
-                                .collect::<Vec<_>>()
-                        })
+                        self.grid_player_map
+                            .get(grid)
+                            .map(|entry| entry.value().iter().map(|id| *id).collect::<Vec<_>>())
                     })
                     .flatten()
                     .filter_map(|id| self.player_map.get(&id))

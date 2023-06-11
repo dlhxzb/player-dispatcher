@@ -1,2 +1,2 @@
-mod game_service;
-mod map_service;
+pub mod game_service;
+pub mod map_service;
