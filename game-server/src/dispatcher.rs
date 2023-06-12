@@ -58,7 +58,7 @@ impl Dispatcher {
         Ok(Self {
             inner: DispatcherInner {
                 zone_server_map,
-                player_map: SkipMap::new().into(),
+                player_map: SkipMap::new(),
             }
             .into(),
         })
@@ -89,12 +89,20 @@ impl Dispatcher {
     pub fn get_all_servers(&self) -> Vec<ServerInfo> {
         self.zone_server_map
             .iter()
-            .map(|entry| entry.value().clone().into_vec())
-            .flatten()
+            .flat_map(|entry| entry.value().clone().into_vec())
             .map(|server| (server.server_id, server))
             .collect::<HashMap<_, _>>()
             .into_values()
             .collect()
+    }
+
+    pub async fn shutdown_all_map_server(&self) {
+        info!("shutdown_all_map_server");
+        for server in self.get_all_servers() {
+            if let Err(e) = shutdown_map_server(&server).await {
+                error!("{:?}", e);
+            }
+        }
     }
 
     #[instrument(skip_all)]

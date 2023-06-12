@@ -64,7 +64,8 @@ pub async fn start_map_server(zones: Vec<ZoneId>) -> Result<ServerInfo> {
 }
 
 pub async fn shutdown_map_server(server: &ServerInfo) -> Result<()> {
-    info!(?server.server_id, "Shutdown");
+    info!(?server.server_id,?server.addr, "Shutdowning");
     server.map_cli.clone().shutdown(()).await?;
+    info!(?server.server_id, "Shutdown done");
     Ok(())
 }

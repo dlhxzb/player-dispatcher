@@ -39,11 +39,11 @@ impl GameService for MapServer {
         let self = self.clone();
         tokio::spawn(async move {
             let id = request.into_inner().player_id;
-            self.player_map.remove(&id).map(|entry| {
+            if let Some(entry) = self.player_map.remove(&id) {
                 let p = entry.value();
                 let grid = xy_to_grid(p.x, p.y);
                 self.grid_player_map.remove(&grid);
-            });
+            };
             Ok(Response::new(()))
         })
         .await

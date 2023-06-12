@@ -1,3 +1,7 @@
+# Usage
+> MAP_SERVER_BIN_PATH="./target/debug/map-server" cargo r --bin game-server
+
+
 # 架构
 服务分两层：
 * dispatcher：分发服务器，功能：1.分发用户请求；2.扩缩容管里。  

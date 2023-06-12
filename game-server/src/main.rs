@@ -22,10 +22,11 @@ async fn main() {
     let dispatcher = dispatcher::Dispatcher::new().await.unwrap();
     tokio::spawn(dispatcher.clone().scaling_moniter());
     Server::builder()
-        .add_service(GameServiceServer::new(dispatcher))
+        .add_service(GameServiceServer::new(dispatcher.clone()))
         .serve(addr)
         .await
         .unwrap();
 
+    dispatcher.shutdown_all_map_server().await;
     info!("exit");
 }

@@ -21,19 +21,21 @@ pub const GRID_LENGTH: usize = 100; // Grid边长
 pub const AOE_MONEY: u64 = 1; // 每次aoe给周边玩家增加的钱数
 pub const ROOT_ZONE_ID: ZoneId = 1;
 
-pub const GAME_PORT_ENV_NAME: &'static str = "GAME_SERVER_PORT";
-pub const MAP_PORT_ENV_NAME: &'static str = "MAP_SERVER_PORT";
+pub const GAME_PORT_ENV_NAME: &str = "GAME_SERVER_PORT";
+pub const MAP_PORT_ENV_NAME: &str = "MAP_SERVER_PORT";
 pub const DEFAULT_GAME_PORT: u32 = 4880;
 pub const DEFAULT_MAP_PORT: u32 = 5000;
 
 pub trait ErrHandle {
     type S;
+    type R;
     fn map_err_unknown(self) -> std::result::Result<Self::S, Status>;
-    fn log_err(self) -> std::result::Result<Self::S, ()>;
+    fn log_err(self) -> std::result::Result<Self::S, Self::R>;
 }
 
 impl<T, E: std::fmt::Debug> ErrHandle for Result<T, E> {
     type S = T;
+    type R = E;
     fn map_err_unknown(self) -> Result<Self::S, Status> {
         self.map_err(|e| {
             let s = format!("{e:?}");
@@ -42,10 +44,11 @@ impl<T, E: std::fmt::Debug> ErrHandle for Result<T, E> {
         })
     }
 
-    fn log_err(self) -> std::result::Result<Self::S, ()> {
+    fn log_err(self) -> std::result::Result<Self::S, Self::R> {
         self.map_err(|e| {
             let s = format!("{e:?}");
             log::error!("{}", s);
+            e
         })
     }
 }

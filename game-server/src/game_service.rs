@@ -54,8 +54,7 @@ impl GameService for Dispatcher {
         let ymin = y - radius;
         let tasks = [(xmin, ymin), (xmin, ymax), (xmax, ymin), (xmax, ymax)]
             .into_iter()
-            .map(|(x, y)| self.get_server_of_coord(x, y).1.into_vec())
-            .flatten()
+            .flat_map(|(x, y)| self.get_server_of_coord(x, y).1.into_vec())
             .map(|server| (server.server_id, server))
             .collect::<HashMap<_, _>>()
             .into_values()

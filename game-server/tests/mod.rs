@@ -1,5 +1,7 @@
-use common::proto::game_service::{game_service_server::GameService, PlayerInfo};
 use game_server::dispatcher::Dispatcher;
+
+use common::proto::game_service::{game_service_server::GameService, PlayerInfo};
+
 use tonic::IntoRequest;
 
 pub fn init_log() {
@@ -11,6 +13,8 @@ pub fn init_log() {
 
 #[tokio::test]
 async fn dispatcher_works() {
+    init_log();
+
     let dispatcher = Dispatcher::new().await.unwrap();
     dispatcher
         .login(
@@ -24,4 +28,6 @@ async fn dispatcher_works() {
         )
         .await
         .unwrap();
+
+    dispatcher.shutdown_all_map_server().await;
 }

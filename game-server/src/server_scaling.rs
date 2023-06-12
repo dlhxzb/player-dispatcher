@@ -109,7 +109,7 @@ impl ServerScaling for Dispatcher {
         });
 
         // 用户导出
-        self.transfer_players(&server, &new_server, &player_ids)
+        self.transfer_players(server, &new_server, &player_ids)
             .await?;
 
         // 完成后取消exporting_server设置
@@ -132,6 +132,10 @@ impl ServerScaling for Dispatcher {
         server: &ServerInfo,
         overhead_map: &HashMap<ServerId, u32>,
     ) -> Result<Option<ServerInfo>> {
+        if server.zones[0] == ROOT_ZONE_ID {
+            info!("Skip merge root zone");
+            return Ok(None);
+        }
         let current_count = overhead_map
             .get(&server.server_id)
             .context("server_id not in overhead_map")?;
@@ -205,7 +209,7 @@ impl ServerScaling for Dispatcher {
                 .await?
                 .into_inner()
                 .player_ids;
-            if players.len() == 0 {
+            if players.is_empty() {
                 break;
             }
             self.transfer_players(server, export_to, &players).await?;
