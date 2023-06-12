@@ -23,8 +23,8 @@ pub const ROOT_ZONE_ID: ZoneId = 1;
 
 pub const GAME_PORT_ENV_NAME: &'static str = "GAME_SERVER_PORT";
 pub const MAP_PORT_ENV_NAME: &'static str = "MAP_SERVER_PORT";
-pub const DEFAULT_GAME_PORT: u32 = 48800;
-pub const DEFAULT_MAP_PORT: u32 = 50000;
+pub const DEFAULT_GAME_PORT: u32 = 4880;
+pub const DEFAULT_MAP_PORT: u32 = 5000;
 
 pub trait ErrHandle {
     type S;

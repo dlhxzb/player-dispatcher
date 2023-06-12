@@ -14,4 +14,6 @@ jobs:
     - name: Build
       run: cargo build
     - name: Run tests
-      run: cargo test
+      env: 
+        MAP_SERVER_BIN_PATH: "../target/debug/map-server"
+      run: cargo test -- --nocapture

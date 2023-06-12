@@ -4,7 +4,7 @@ use common::proto::game_service::game_service_client::GameServiceClient;
 use common::proto::map_service::map_service_client::MapServiceClient;
 use common::{ServerId, ZoneId, DEFAULT_MAP_PORT, MAP_PORT_ENV_NAME};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use common::{WORLD_X_MAX, WORLD_X_MIN, WORLD_Y_MAX, WORLD_Y_MIN};
 use tonic::Status;
 use tracing::*;
@@ -31,6 +31,7 @@ pub fn gen_server_id() -> ServerId {
 
 #[instrument]
 pub async fn start_map_server(zones: Vec<ZoneId>) -> Result<ServerInfo> {
+    use std::env;
     use std::process::Command;
     use tokio::time::{sleep, Duration};
 
@@ -38,9 +39,11 @@ pub async fn start_map_server(zones: Vec<ZoneId>) -> Result<ServerInfo> {
     let port = PORT.fetch_add(1, Ordering::Relaxed);
     let addr = format!("http://[::1]:{port}");
 
-    Command::new("./target/debug/map-server")
+    let map_bin_path = env::var("MAP_SERVER_BIN_PATH").expect("Please set env MAP_SERVER_BIN_PATH");
+    Command::new(&map_bin_path)
         .env(MAP_PORT_ENV_NAME, port.to_string())
-        .spawn()?;
+        .spawn()
+        .with_context(|| format!("Failed to start {map_bin_path}"))?;
     sleep(Duration::from_millis(500)).await;
 
     let map_cli = MapServiceClient::connect(addr.clone()).await?;
