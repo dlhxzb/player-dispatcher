@@ -1,4 +1,8 @@
+mod game;
+mod scaling;
+
 use game_server::dispatcher::Dispatcher;
+use game_server::util::Config;
 
 use common::proto::game_service::{game_service_server::GameService, PlayerInfo};
 
@@ -15,7 +19,13 @@ pub fn init_log() {
 async fn dispatcher_works() {
     init_log();
 
-    let dispatcher = Dispatcher::new().await.unwrap();
+    let dispatcher = Dispatcher::new(Config {
+        max_players: 10,
+        min_players: 3,
+        max_zone_depth: 10,
+    })
+    .await
+    .unwrap();
     dispatcher
         .login(
             PlayerInfo {

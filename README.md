@@ -1,10 +1,19 @@
 # Usage
 > MAP_SERVER_BIN_PATH="./target/debug/map-server" cargo r --bin game-server
+Optinal env:
+game-server:
+* GAME_MAX_PLAYERS: 扩容阈值 default:1000
+* GAME_MIN_PLAYERS: 缩容阈值 default:250
+* GAME_MAX_ZONE_DEPTH: 四叉树最大高度 default:10
+* GAME_SERVER_PORT: game service端口 default:4880
+* MAP_SERVER_PORT: 设定给map server的端口(本地的话是起始端口，每启动一台+1) default:5000
+map-server:
+* MAP_SERVER_PORT: map service端口 default:5000
 
 
 # 架构
 服务分两层：
-* dispatcher：分发服务器，功能：1.分发用户请求；2.扩缩容管里。  
+* dispatcher：分发服务器，功能：1.分发用户请求；2.扩缩容管理。  
   它有两个缓存：
   * 区域-服务器缓存，四叉树，用于动态划分区域，实现负载均衡
   * 用户-服务器缓存，分发请求时快速定位用户所在服务器
@@ -42,7 +51,7 @@
     - [x] 缩容：导出全部用户到指定server
 - 其它
   - [x] rayon加速
-  - [ ] config
+  - [x] config
   - [ ] test  `doing`
   - [ ] example
   - [ ] benchmark

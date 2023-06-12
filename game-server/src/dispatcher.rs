@@ -28,6 +28,7 @@ use std::sync::Arc;
 pub struct DispatcherInner {
     pub zone_server_map: SkipMap<ZoneId, ZoneServers>, // 通过Zone定位server
     pub player_map: SkipMap<PlayerId, (ServerInfo, f32, f32)>, // 定位Player所属server,x,y
+    pub config: Config,
 }
 
 #[derive(Clone)]
@@ -43,7 +44,7 @@ impl Deref for Dispatcher {
 }
 
 impl Dispatcher {
-    pub async fn new() -> Result<Self> {
+    pub async fn new(config: Config) -> Result<Self> {
         // TODO: 将zone等配置传递给server
         let server = start_map_server(vec![ROOT_ZONE_ID]).await?;
         let zone_server_map = SkipMap::new();
@@ -59,6 +60,7 @@ impl Dispatcher {
             inner: DispatcherInner {
                 zone_server_map,
                 player_map: SkipMap::new(),
+                config,
             }
             .into(),
         })
@@ -66,7 +68,7 @@ impl Dispatcher {
 
     // 逐层向下，找到为止
     pub fn get_server_of_coord(&self, x: f32, y: f32) -> (ZoneId, ZoneServers) {
-        for depth in 1..=MAX_ZONE_DEPTH {
+        for depth in 1..=self.config.max_zone_depth {
             let zone_id = xy_to_zone_id(x, y, depth);
             if let Some(server) = self
                 .zone_server_map
@@ -128,13 +130,13 @@ impl Dispatcher {
             }
             for (server_id, &overhead) in &overhead_map {
                 info!(?server_id, ?overhead);
-                if overhead >= MAX_PLAYER {
+                if overhead >= self.config.max_players {
                     let _ = self
                         .expand_overload_server(server_map.get(server_id).unwrap())
                         .await
                         .log_err();
                 }
-                if overhead <= MIN_PLAYER {
+                if overhead <= self.config.min_players {
                     let server = server_map.get(server_id).unwrap();
                     if let Ok(Some(export_to)) = self
                         .get_merge_target_server(server, &overhead_map)

@@ -6,10 +6,18 @@ use common::{ServerId, ZoneId, DEFAULT_MAP_PORT, MAP_PORT_ENV_NAME};
 
 use anyhow::{Context, Result};
 use common::{WORLD_X_MAX, WORLD_X_MIN, WORLD_Y_MAX, WORLD_Y_MIN};
+use econf::LoadEnv;
 use tonic::Status;
 use tracing::*;
 
 use std::sync::atomic::{AtomicU32, Ordering};
+
+#[derive(Debug, LoadEnv)]
+pub struct Config {
+    pub max_players: u32,    // 扩容阈值
+    pub min_players: u32,    // 缩容阈值
+    pub max_zone_depth: u32, // 四叉树最大高度
+}
 
 pub fn check_xy_range(x: f32, y: f32) -> Result<(), Status> {
     if x >= WORLD_X_MAX || y >= WORLD_Y_MAX || x <= WORLD_X_MIN || y < WORLD_Y_MIN {
@@ -31,11 +39,17 @@ pub fn gen_server_id() -> ServerId {
 
 #[instrument]
 pub async fn start_map_server(zones: Vec<ZoneId>) -> Result<ServerInfo> {
+    use once_cell::sync::Lazy;
     use std::env;
     use std::process::Command;
     use tokio::time::{sleep, Duration};
 
-    static PORT: AtomicU32 = AtomicU32::new(DEFAULT_MAP_PORT);
+    static PORT: Lazy<AtomicU32> = Lazy::new(|| {
+        let port = env::var(MAP_PORT_ENV_NAME)
+            .map(|s| s.parse().unwrap())
+            .unwrap_or(DEFAULT_MAP_PORT);
+        AtomicU32::new(port)
+    });
     let port = PORT.fetch_add(1, Ordering::Relaxed);
     let addr = format!("http://[::1]:{port}");
 

@@ -47,10 +47,10 @@ impl ServerScaling for Dispatcher {
         info!("IN");
         let mut depth = zone_depth(server.zones[0]);
         let only_one_zone = server.zones.len() == 1;
-        if only_one_zone && depth == MAX_ZONE_DEPTH {
+        if only_one_zone && depth == self.config.max_zone_depth {
             info!(
-                "Can not expand server:{} for only one zone of MAX_ZONE_DEPTH",
-                server.server_id
+                "Can not expand server:{} for only one zone of max depth {}",
+                server.server_id, self.config.max_zone_depth
             );
             return Ok(false);
         }
@@ -163,7 +163,7 @@ impl ServerScaling for Dispatcher {
             "Idle server:{} with {current_count} players, min brother server{} with {bro_count}",
             server.server_id, bro_server.server_id
         );
-        if current_count + bro_count >= MAX_PLAYER {
+        if current_count + bro_count >= self.config.max_players {
             Ok(None)
         } else {
             Ok(Some(bro_server))
@@ -205,7 +205,9 @@ impl ServerScaling for Dispatcher {
             let players = server
                 .map_cli
                 .clone()
-                .get_n_players(GetPlayersRequest { n: MAX_PLAYER })
+                .get_n_players(GetPlayersRequest {
+                    n: self.config.max_players,
+                })
                 .await?
                 .into_inner()
                 .player_ids;
