@@ -101,8 +101,8 @@ impl MapService for MapServer {
 
     #[instrument(skip_all)]
     async fn get_overhead(&self, _request: Request<()>) -> RPCResult<OverheadReply> {
-        info!("IN");
         let count = self.player_map.len() as u32;
+        info!(?count);
         Ok(Response::new(OverheadReply { count }))
     }
 

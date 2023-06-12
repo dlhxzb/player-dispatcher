@@ -13,7 +13,10 @@ jobs:
       uses: arduino/setup-protoc@v2
     - name: Build
       run: cargo build
+    - name: Clippy
+      run: cargo clippy
     - name: Run tests
       env: 
         MAP_SERVER_BIN_PATH: "../target/debug/map-server"
+        RUST_LOG: "WARN"
       run: cargo test -- --nocapture

@@ -36,18 +36,34 @@ pub trait ErrHandle {
 impl<T, E: std::fmt::Debug> ErrHandle for Result<T, E> {
     type S = T;
     type R = E;
+    #[track_caller]
     fn map_err_unknown(self) -> Result<Self::S, Status> {
+        let locate_caller = core::panic::Location::caller();
         self.map_err(|e| {
             let s = format!("{e:?}");
-            log::error!("{}", s);
+            log::error!(
+                "{}, at {}:{} in file:{}",
+                s,
+                locate_caller.line(),
+                locate_caller.column(),
+                locate_caller.file(),
+            );
             Status::unknown(s)
         })
     }
 
+    #[track_caller]
     fn log_err(self) -> std::result::Result<Self::S, Self::R> {
+        let locate_caller = core::panic::Location::caller();
         self.map_err(|e| {
             let s = format!("{e:?}");
-            log::error!("{}", s);
+            log::error!(
+                "{}, at {}:{} in file:{}",
+                s,
+                locate_caller.line(),
+                locate_caller.column(),
+                locate_caller.file(),
+            );
             e
         })
     }

@@ -14,7 +14,7 @@ use tracing::*;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt().pretty().init();
+    tracing_subscriber::fmt::init();
 
     let port = std::env::var(GAME_PORT_ENV_NAME).unwrap_or_else(|_| DEFAULT_GAME_PORT.to_string());
     let addr = format!("[::1]:{}", port).parse().unwrap();
@@ -22,6 +22,7 @@ async fn main() {
         max_players: DEFAULT_MAX_PLAYERS,
         min_players: DEFAULT_MIN_PLAYERS,
         max_zone_depth: DEFAULT_MAX_ZONE_DEPTH,
+        scaling_interval: 10_000,
     };
     let config = econf::load(config, "GAME");
     info!("starting at {addr} {config:?}");

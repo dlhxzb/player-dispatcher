@@ -12,9 +12,10 @@ use tracing::info;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt().pretty().init();
+    tracing_subscriber::fmt::init();
 
-    let port = std::env::var(MAP_PORT_ENV_NAME).expect(&format!("Need env {MAP_PORT_ENV_NAME}"));
+    let port =
+        std::env::var(MAP_PORT_ENV_NAME).unwrap_or_else(|_| panic!("Need env {MAP_PORT_ENV_NAME}"));
     let addr = format!("[::1]:{}", port).parse().unwrap();
     info!("starting at {addr}");
 

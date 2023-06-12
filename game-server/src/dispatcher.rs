@@ -147,7 +147,7 @@ impl Dispatcher {
                 }
             }
 
-            sleep(Duration::from_secs(10)).await;
+            sleep(Duration::from_millis(self.config.scaling_interval)).await;
         }
     }
 }

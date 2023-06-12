@@ -1,6 +1,3 @@
-mod game;
-mod scaling;
-
 use game_server::dispatcher::Dispatcher;
 use game_server::util::Config;
 
@@ -8,30 +5,24 @@ use common::proto::game_service::{game_service_server::GameService, PlayerInfo};
 
 use tonic::IntoRequest;
 
-pub fn init_log() {
-    use once_cell::sync::OnceCell;
-
-    static CELL: OnceCell<()> = OnceCell::new();
-    CELL.get_or_init(|| tracing_subscriber::fmt::init());
-}
-
 #[tokio::test]
-async fn dispatcher_works() {
-    init_log();
+async fn test_game_login() {
+    // crate::init_log();
 
     let dispatcher = Dispatcher::new(Config {
         max_players: 10,
         min_players: 3,
         max_zone_depth: 10,
-        scaling_interval: 10,
+        scaling_interval: 0,
     })
     .await
     .unwrap();
+
     dispatcher
         .login(
             PlayerInfo {
                 player_id: 1,
-                x: 100.0,
+                x: -100.0,
                 y: 200.0,
                 money: 99,
             }
@@ -39,6 +30,18 @@ async fn dispatcher_works() {
         )
         .await
         .unwrap();
+
+    let (server, ..) = dispatcher.get_server_of_player(&1).unwrap();
+    let count = server
+        .map_cli
+        .clone()
+        .get_overhead(())
+        .await
+        .unwrap()
+        .into_inner()
+        .count;
+
+    assert_eq!(count, 1);
 
     dispatcher.shutdown_all_map_server().await;
 }

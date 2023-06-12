@@ -14,9 +14,10 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 #[derive(Debug, LoadEnv)]
 pub struct Config {
-    pub max_players: u32,    // 扩容阈值
-    pub min_players: u32,    // 缩容阈值
-    pub max_zone_depth: u32, // 四叉树最大高度
+    pub max_players: u32,      // 扩容阈值
+    pub min_players: u32,      // 缩容阈值
+    pub max_zone_depth: u32,   // 四叉树最大高度
+    pub scaling_interval: u64, // 扩缩容扫描间隔(ms)
 }
 
 pub fn check_xy_range(x: f32, y: f32) -> Result<(), Status> {

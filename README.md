@@ -6,6 +6,7 @@ game-server:
 * GAME_MIN_PLAYERS: 缩容阈值 default:250
 * GAME_MAX_ZONE_DEPTH: 四叉树最大高度 default:10
 * GAME_SERVER_PORT: game service端口 default:4880
+* GAME_SCALING_INTERVAL: 扩缩容扫描间隔(ms) default:10,000
 * MAP_SERVER_PORT: 设定给map server的端口(本地的话是起始端口，每启动一台+1) default:5000
 map-server:
 * MAP_SERVER_PORT: map service端口 default:5000
