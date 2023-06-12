@@ -1,15 +1,15 @@
-use map_server::server::Server;
+use map_server::server::MapServer;
 
+use common::proto::game_service::game_service_server::GameService;
 use common::proto::game_service::PlayerInfo;
 use common::proto::game_service::*;
-use common::proto::map_service::map_service_server::MapService;
 
 use tonic::IntoRequest;
 
 #[tokio::test]
 async fn test_query() {
     crate::init_log();
-    let server = Server::new(1);
+    let server = MapServer::new(1);
     // (0,0) (1,1) (2,2) (3,3)
     let players = (0..4)
         .map(|i| PlayerInfo {
