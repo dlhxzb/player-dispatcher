@@ -17,6 +17,11 @@ tracing = "0.1.37"
 tracing-subscriber = "0.3.17"
 
 common = { path = "../common" }
+map-server = { path = "../map-server", optional = true }
 
 [dev-dependencies]
 rand = "0.8.5"
+
+[features]
+default = []
+map_server_inside = [ "map-server" ] # 内部创建启动map_server对象。用于测试

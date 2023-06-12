@@ -12,7 +12,7 @@ async fn test_expand_overload_server() {
     // crate::init_log();
 
     let dispatcher = Dispatcher::new(Config {
-        max_players: 10, // 第十个触发expand
+        max_players: 10, // 第10个触发expand
         min_players: 3,
         max_zone_depth: 10,
         scaling_interval: 200,

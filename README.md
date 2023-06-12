@@ -1,4 +1,5 @@
 # Usage
+#### game-server以binary形式启动map-server
 > MAP_SERVER_BIN_PATH="./target/debug/map-server" cargo r --bin game-server
 Optinal env:
 game-server:
@@ -11,7 +12,9 @@ game-server:
 map-server:
 * MAP_SERVER_PORT: map service端口 default:5000
 
-
+#### game-server以内部对象形式调用map-server，用于测试
+> RUST_LOG=WARN cargo t --features map_server_inside
+  
 # 架构
 服务分两层：
 * dispatcher：分发服务器，功能：1.分发用户请求；2.扩缩容管理。  

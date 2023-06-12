@@ -14,9 +14,9 @@ jobs:
     - name: Build
       run: cargo build
     - name: Clippy
-      run: cargo clippy
+      run: cargo clippy --all-features
     - name: Run tests
       env: 
         MAP_SERVER_BIN_PATH: "../target/debug/map-server"
         RUST_LOG: "WARN"
-      run: cargo test -- --nocapture
+      run: cargo test --features map_server_inside

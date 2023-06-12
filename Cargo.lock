@@ -358,6 +358,7 @@ dependencies = [
  "econf",
  "ert",
  "futures",
+ "map-server",
  "once_cell",
  "rand",
  "rayon",

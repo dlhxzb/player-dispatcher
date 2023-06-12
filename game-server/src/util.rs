@@ -4,7 +4,7 @@ use common::proto::game_service::game_service_client::GameServiceClient;
 use common::proto::map_service::map_service_client::MapServiceClient;
 use common::{ServerId, ZoneId, DEFAULT_MAP_PORT, MAP_PORT_ENV_NAME};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use common::{WORLD_X_MAX, WORLD_X_MIN, WORLD_Y_MAX, WORLD_Y_MIN};
 use econf::LoadEnv;
 use tonic::Status;
@@ -38,12 +38,10 @@ pub fn gen_server_id() -> ServerId {
     SERVER_ID.fetch_add(1, Ordering::Relaxed)
 }
 
-#[instrument]
-pub async fn start_map_server(zones: Vec<ZoneId>) -> Result<ServerInfo> {
+// 从MAP_PORT_ENV_NAME开始，每次获取逐个+1
+pub fn gen_port_no() -> u32 {
     use once_cell::sync::Lazy;
     use std::env;
-    use std::process::Command;
-    use tokio::time::{sleep, Duration};
 
     static PORT: Lazy<AtomicU32> = Lazy::new(|| {
         let port = env::var(MAP_PORT_ENV_NAME)
@@ -51,7 +49,19 @@ pub async fn start_map_server(zones: Vec<ZoneId>) -> Result<ServerInfo> {
             .unwrap_or(DEFAULT_MAP_PORT);
         AtomicU32::new(port)
     });
-    let port = PORT.fetch_add(1, Ordering::Relaxed);
+    PORT.fetch_add(1, Ordering::Relaxed)
+}
+
+// 启动独立的bin
+#[cfg(not(feature = "map_server_inside"))]
+#[instrument]
+pub async fn start_map_server(zones: Vec<ZoneId>) -> Result<ServerInfo> {
+    use anyhow::Context;
+    use std::env;
+    use std::process::Command;
+    use tokio::time::{sleep, Duration};
+
+    let port = gen_port_no();
     let addr = format!("http://[::1]:{port}");
 
     let map_bin_path = env::var("MAP_SERVER_BIN_PATH").expect("Please set env MAP_SERVER_BIN_PATH");
@@ -64,6 +74,45 @@ pub async fn start_map_server(zones: Vec<ZoneId>) -> Result<ServerInfo> {
     let map_cli = MapServiceClient::connect(addr.clone()).await?;
     let game_cli = GameServiceClient::connect(addr.clone()).await?;
     let server_id = gen_server_id();
+
+    info!(?server_id, ?addr);
+    Ok(ServerInfo {
+        inner: ServerInfoInner {
+            server_id,
+            zones,
+            map_cli,
+            game_cli,
+            addr,
+        }
+        .into(),
+    })
+}
+
+// 以对象形式加载。测试用
+#[cfg(feature = "map_server_inside")]
+#[instrument]
+pub async fn start_map_server(zones: Vec<ZoneId>) -> Result<ServerInfo> {
+    use common::proto::game_service::game_service_server::GameServiceServer;
+    use common::proto::map_service::map_service_server::MapServiceServer;
+    use tokio::time::{sleep, Duration};
+    use tonic::transport::Server;
+
+    let port = gen_port_no();
+    let addr = format!("[::1]:{port}").parse().unwrap();
+
+    let server_id = gen_server_id();
+    let map_server = map_server::server::MapServer::new(server_id);
+    tokio::spawn(
+        Server::builder()
+            .add_service(MapServiceServer::new(map_server.clone()))
+            .add_service(GameServiceServer::new(map_server))
+            .serve(addr),
+    );
+    sleep(Duration::from_millis(100)).await;
+
+    let addr = format!("http://[::1]:{port}");
+    let map_cli = MapServiceClient::connect(addr.clone()).await?;
+    let game_cli = GameServiceClient::connect(addr.clone()).await?;
 
     info!(?server_id, ?addr);
     Ok(ServerInfo {

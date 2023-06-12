@@ -19,7 +19,11 @@ async fn main() {
     let addr = format!("[::1]:{}", port).parse().unwrap();
     info!("starting at {addr}");
 
-    let map_server = server::MapServer::new(1);
+    let server_id = std::env::var(MAP_PORT_ENV_NAME)
+        .map(|s| s.parse().unwrap())
+        .unwrap_or(1);
+
+    let map_server = server::MapServer::new(server_id);
     let (otx, orx) = tokio::sync::oneshot::channel();
     // Safety: 用一次就退出
     unsafe { SHUTDOWN_TX.get_or_init(|| otx) };
