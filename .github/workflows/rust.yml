@@ -33,13 +33,15 @@ jobs:
     - name: Build and push map-server Docker image
       uses: docker/build-push-action@v3
       with:
-        context: "./map-server"
+        file: map-server/Dockerfile
+        context: .
         push: true
         tags: dlhxzb/map-server:latest
 
-    - name: Build and push game-server Docker image
-      uses: docker/build-push-action@v3
-      with:
-        context: "./game-server"
-        push: true
-        tags: dlhxzb/game-server:latest
+    # - name: Build and push game-server Docker image
+    #   uses: docker/build-push-action@v3
+    #   with:
+    #     file: game-server/Dockerfile
+    #     context: .
+    #     push: true
+    #     tags: dlhxzb/game-server:latest

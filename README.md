@@ -15,6 +15,10 @@ map-server:
 #### game-server以内部对象形式调用map-server，用于测试
 > RUST_LOG=WARN cargo t --features map_server_inside
   
+#### Benchmark
+1. 以内部map-server方式启动game-server
+> cargo run --release --bin game-server --features map_server_inside
+
 # 架构
 服务分两层：
 * dispatcher：分发服务器，功能：1.分发用户请求；2.扩缩容管理。  

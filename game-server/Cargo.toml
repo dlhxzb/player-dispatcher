@@ -3,6 +3,10 @@ name = "game-server"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+map_server_inside = [ "map-server" ] # 内部创建启动map_server对象。用于测试
+
 [dependencies]
 anyhow = "1.0"
 crossbeam-skiplist = "0.1"
@@ -21,7 +25,13 @@ map-server = { path = "../map-server", optional = true }
 
 [dev-dependencies]
 rand = "0.8.5"
+criterion = { version = "0.5.1", features = ["async_tokio", "html_reports"] }
+futures = "0.3"
+tokio = { version = "1.28.0", features = ["full"] }
+tonic = "0.9"
+game-server = { path = "../game-server" }
+common = { path = "../common" }
 
-[features]
-default = []
-map_server_inside = [ "map-server" ] # 内部创建启动map_server对象。用于测试
+[[bench]]
+name = "bench_main"
+harness = false
