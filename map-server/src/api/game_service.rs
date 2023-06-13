@@ -12,7 +12,7 @@ use tracing::*;
 impl GameService for MapServer {
     #[instrument(skip(self))]
     async fn login(&self, request: Request<PlayerInfo>) -> RPCResult<()> {
-        info!("IN");
+        debug!("IN");
         let self = self.clone();
         tokio::spawn(async move {
             let player = request.into_inner();
@@ -35,7 +35,7 @@ impl GameService for MapServer {
 
     #[instrument(skip(self))]
     async fn logout(&self, request: Request<PlayerIdRequest>) -> RPCResult<()> {
-        info!("IN");
+        debug!("IN");
         let self = self.clone();
         tokio::spawn(async move {
             let id = request.into_inner().player_id;

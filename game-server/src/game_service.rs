@@ -18,7 +18,7 @@ use std::collections::HashMap;
 impl GameService for Dispatcher {
     #[instrument(skip(self))]
     async fn login(&self, request: Request<PlayerInfo>) -> RPCResult<()> {
-        info!("IN");
+        debug!("IN");
         let player = request.into_inner();
         let player_id = player.player_id;
         let self = self.clone();
@@ -184,7 +184,7 @@ impl GameService for Dispatcher {
 
     #[instrument(skip(self))]
     async fn logout(&self, request: Request<PlayerIdRequest>) -> RPCResult<()> {
-        info!("IN");
+        debug!("IN");
         let request = request.into_inner();
         let player_id = request.player_id;
         let self = self.clone();

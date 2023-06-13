@@ -62,7 +62,7 @@ pub async fn start_map_server(zones: Vec<ZoneId>) -> Result<ServerInfo> {
     use tokio::time::{sleep, Duration};
 
     let port = gen_port_no();
-    let addr = format!("http://[::1]:{port}");
+    let addr = format!("http://127.0.0.1:{port}");
 
     let map_bin_path = env::var("MAP_SERVER_BIN_PATH").expect("Please set env MAP_SERVER_BIN_PATH");
     Command::new(&map_bin_path)
@@ -98,7 +98,7 @@ pub async fn start_map_server(zones: Vec<ZoneId>) -> Result<ServerInfo> {
     use tonic::transport::Server;
 
     let port = gen_port_no();
-    let addr = format!("[::1]:{port}").parse().unwrap();
+    let addr = format!("127.0.0.1:{port}").parse().unwrap();
 
     let server_id = gen_server_id();
     let map_server = map_server::server::MapServer::new(server_id);
@@ -110,7 +110,7 @@ pub async fn start_map_server(zones: Vec<ZoneId>) -> Result<ServerInfo> {
     );
     sleep(Duration::from_millis(100)).await;
 
-    let addr = format!("http://[::1]:{port}");
+    let addr = format!("http://127.0.0.1:{port}");
     let map_cli = MapServiceClient::connect(addr.clone()).await?;
     let game_cli = GameServiceClient::connect(addr.clone()).await?;
 

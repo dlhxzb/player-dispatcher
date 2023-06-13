@@ -16,7 +16,7 @@ async fn main() {
 
     let port =
         std::env::var(MAP_PORT_ENV_NAME).unwrap_or_else(|_| panic!("Need env {MAP_PORT_ENV_NAME}"));
-    let addr = format!("[::1]:{}", port).parse().unwrap();
+    let addr = format!("127.0.0.1:{}", port).parse().unwrap();
     info!("starting at {addr}");
 
     let server_id = std::env::var(MAP_PORT_ENV_NAME)

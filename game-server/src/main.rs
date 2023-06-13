@@ -17,7 +17,7 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     let port = std::env::var(GAME_PORT_ENV_NAME).unwrap_or_else(|_| DEFAULT_GAME_PORT.to_string());
-    let addr = format!("[::1]:{}", port).parse().unwrap();
+    let addr = format!("127.0.0.1:{}", port).parse().unwrap();
     let config = util::Config {
         max_players: DEFAULT_MAX_PLAYERS,
         min_players: DEFAULT_MIN_PLAYERS,
