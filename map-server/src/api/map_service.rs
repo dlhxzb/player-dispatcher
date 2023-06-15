@@ -9,7 +9,7 @@ use common::*;
 use itertools::Itertools;
 use once_cell::sync::OnceCell;
 use tokio::sync::oneshot;
-use tonic::{async_trait, IntoRequest, Request, Response};
+use tonic::{async_trait, IntoRequest, Request, Response, Status};
 use tracing::*;
 
 pub static mut SHUTDOWN_TX: OnceCell<oneshot::Sender<()>> = OnceCell::new();
@@ -18,7 +18,7 @@ pub static mut SHUTDOWN_TX: OnceCell<oneshot::Sender<()>> = OnceCell::new();
 impl MapService for MapServer {
     #[instrument(skip(self))]
     async fn export_player(&self, request: Request<ExportRequest>) -> RPCResult<()> {
-        info!("IN");
+        debug!("IN");
         let self = self.clone();
         tokio::spawn(async move {
             let ExportRequest {
@@ -42,22 +42,21 @@ impl MapService for MapServer {
 
     #[instrument(skip(self))]
     async fn import_player(&self, request: Request<PlayerInfo>) -> RPCResult<()> {
-        info!("IN");
+        debug!("IN");
         self.login(request).await
     }
 
     // 找到人数最多的zone，只有一个zone时从4个子zone中找
-    #[instrument(skip(self))]
+    #[instrument(skip_all)]
     async fn get_heaviest_zone_players(
         &self,
         request: Request<ZoneDepth>,
     ) -> RPCResult<ZonePlayersReply> {
-        info!("IN");
         let depth = request.into_inner().depth;
+        info!(?depth, "IN");
         let self = self.clone();
         tokio::spawn(async move {
-            let (zone_id, player_ids) = self
-                .player_map
+            self.player_map
                 .iter()
                 .map(|entry| (*entry.key(), (entry.value().x, entry.value().y)))
                 .into_group_map_by(|(_id, (x, y))| xy_to_zone_id(*x, *y, depth))
@@ -67,15 +66,17 @@ impl MapService for MapServer {
                     (zone_id, player_ids)
                 })
                 .max_by_key(|(_zone_id, ids)| ids.len())
-                .unwrap_or_default();
-            info!("zone_id:{}, players:{}", zone_id, player_ids.len());
-            Ok(Response::new(ZonePlayersReply {
-                zone_id,
-                player_ids,
-            }))
+                .ok_or(Status::unknown("No Zone found"))
         })
         .await
         .map_err_unknown()?
+        .map(|(zone_id, player_ids)| {
+            info!("OUT: zone_id:{}, players:{}", zone_id, player_ids.len());
+            Response::new(ZonePlayersReply {
+                zone_id,
+                player_ids,
+            })
+        })
     }
 
     #[instrument(skip(self))]
@@ -102,7 +103,7 @@ impl MapService for MapServer {
     #[instrument(skip_all)]
     async fn get_overhead(&self, _request: Request<()>) -> RPCResult<OverheadReply> {
         let count = self.player_map.len() as u32;
-        info!(?count);
+        debug!(?count);
         Ok(Response::new(OverheadReply { count }))
     }
 

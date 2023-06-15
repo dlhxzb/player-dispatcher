@@ -5,7 +5,7 @@ use crate::util::*;
 use common::proto::map_service::{ExportRequest, GetPlayersRequest, ZoneDepth, ZonePlayersReply};
 use common::*;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use ert::prelude::RunVia;
 use futures::StreamExt;
 use tonic::async_trait;
@@ -23,6 +23,7 @@ pub trait ServerScaling {
     fn get_merge_target_server(
         &self,
         server: &ServerInfo,
+        overhead: u32,
         overhead_map: &HashMap<ServerId, u32>,
     ) -> Result<Option<ServerInfo>>;
     async fn transfer_players(
@@ -42,7 +43,7 @@ impl ServerScaling for Dispatcher {
     /// 1. 新旧服务器同时注册到要导出的zone(server + exporting_server)
     /// 2. 用户导出(此时对于该zone的范围请求(aoe/query)会送到两台服务器)
     /// 3. 旧服务器取消导出zone的注册(exporting=None)
-    #[instrument(skip_all, fields(server_id = %server.server_id))]
+    #[instrument(skip_all, fields(server_id = %server.server_id, zones = ?server.zones))]
     async fn expand_overload_server(&self, server: &ServerInfo) -> Result<bool> {
         info!("IN");
         let mut depth = zone_depth(server.zones[0]);
@@ -126,21 +127,20 @@ impl ServerScaling for Dispatcher {
     }
 
     // 关闭负载小的服务器，将用户转移到其它同父叶子节点服务器。若因合并后人数超限无法合并则返回false
-    #[instrument(skip_all, fields(server_id = %server.server_id))]
+    #[instrument(skip_all, fields(server_id = %server.server_id, zones = ?server.zones))]
     fn get_merge_target_server(
         &self,
         server: &ServerInfo,
+        overhead: u32,
         overhead_map: &HashMap<ServerId, u32>,
     ) -> Result<Option<ServerInfo>> {
         if server.zones[0] == ROOT_ZONE_ID {
             info!("Skip merge root zone");
             return Ok(None);
         }
-        let current_count = overhead_map
-            .get(&server.server_id)
-            .context("server_id not in overhead_map")?;
+
         // 获取同父其它叶子节点的最闲服务器
-        let (bro_count, bro_server) = get_child_zone_ids(server.zones[0] / 10)
+        let Some((bro_overhead, bro_server)) = get_child_zone_ids(server.zones[0] / 10)
             .into_iter()
             .filter(|id| !server.zones.contains(id))
             .filter_map(|id| {
@@ -156,14 +156,17 @@ impl ServerScaling for Dispatcher {
                     .get(&server.server_id)
                     .map(|count| (*count, server))
             })
-            .min_by_key(|(count, _)| *count)
-            .context("No brother leaf found")?;
+            .min_by_key(|(count, _)| *count) else
+            {
+                info!("No brother leaf found to merge");
+                return Ok(None);
+            };
 
         info!(
-            "Idle server:{} with {current_count} players, min brother server{} with {bro_count}",
+            "Idle server:{} with {overhead} players, min brother server{} with {bro_overhead}",
             server.server_id, bro_server.server_id
         );
-        if current_count + bro_count >= self.config.max_players {
+        if overhead + bro_overhead >= self.config.max_players {
             Ok(None)
         } else {
             Ok(Some(bro_server))

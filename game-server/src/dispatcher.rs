@@ -112,7 +112,7 @@ impl Dispatcher {
         use tokio::time::{sleep, Duration};
 
         loop {
-            info!("checking");
+            info!("checking, totally {} players", self.player_map.len());
             let server_map = self
                 .get_all_servers()
                 .into_iter()
@@ -129,17 +129,14 @@ impl Dispatcher {
                     .log_err();
             }
             for (server_id, &overhead) in &overhead_map {
-                info!(?server_id, ?overhead);
+                let server = server_map.get(server_id).unwrap();
+                info!(?server_id, ?overhead, ?server.zones);
                 if overhead >= self.config.max_players {
-                    let _ = self
-                        .expand_overload_server(server_map.get(server_id).unwrap())
-                        .await
-                        .log_err();
+                    let _ = self.expand_overload_server(server).await.log_err();
                 }
                 if overhead <= self.config.min_players {
-                    let server = server_map.get(server_id).unwrap();
                     if let Ok(Some(export_to)) = self
-                        .get_merge_target_server(server, &overhead_map)
+                        .get_merge_target_server(server, overhead, &overhead_map)
                         .log_err()
                     {
                         let _ = self.close_idle_server(server, &export_to).await.log_err();

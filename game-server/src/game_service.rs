@@ -25,7 +25,10 @@ impl GameService for Dispatcher {
         async move {
             check_xy_range(player.x, player.y)?;
             if self.player_map.contains_key(&player.player_id) {
-                return Err(Status::already_exists(player.player_id.to_string()));
+                return Err(Status::already_exists(format!(
+                    "player_id:{} was already login",
+                    player.player_id
+                )));
             }
             let server = self.get_server_of_coord(player.x, player.y).1.server;
 

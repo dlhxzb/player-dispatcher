@@ -3,4 +3,7 @@ members = [
   "game-server",
   "map-server",
   "common",
+
+  # Internal
+  "benches",
 ]

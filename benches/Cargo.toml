@@ -1,0 +1,21 @@
+[package]
+name = "benches"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rand = "0.8.5"
+
+[dev-dependencies]
+rand = "0.8.5"
+criterion = { version = "0.5.1", features = ["async_tokio", "html_reports"] }
+futures = "0.3"
+tokio = { version = "1.28.0", features = ["full"] }
+tonic = "0.9"
+game-server = { path = "../game-server" }
+common = { path = "../common" }
+
+[[bench]]
+name = "bench_main"
+path = "bench_main.rs"
+harness = false

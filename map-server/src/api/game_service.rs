@@ -18,7 +18,10 @@ impl GameService for MapServer {
             let player = request.into_inner();
             let player_id = player.player_id;
             if self.player_map.contains_key(&player.player_id) {
-                return Err(Status::already_exists(player.player_id.to_string()));
+                return Err(Status::already_exists(format!(
+                    "player_id:{} was already login",
+                    player.player_id
+                )));
             }
 
             let grid = xy_to_grid(player.x, player.y);
