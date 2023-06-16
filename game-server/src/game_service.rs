@@ -101,7 +101,7 @@ impl GameService for Dispatcher {
                     ..
                 },
             ) = self.get_server_of_coord(target_x, target_y);
-            let coord = Coord {
+            let mut coord = Coord {
                 x: target_x,
                 y: target_y,
             };
@@ -117,14 +117,17 @@ impl GameService for Dispatcher {
                         coord: Some(coord.clone()),
                     })
                     .await?;
+            } else {
+                // 在map服务器内移动
+                coord = target_server
+                    .game_cli
+                    .clone()
+                    .moving(request)
+                    .await?
+                    .into_inner();
             }
-            let Coord { x, y } = target_server
-                .game_cli
-                .clone()
-                .moving(request)
-                .await?
-                .into_inner();
-            self.player_map.insert(player_id, (target_server, x, y));
+            self.player_map
+                .insert(player_id, (target_server, coord.x, coord.y));
             Ok(Response::new(coord))
         }
         .via_g(player_id)
@@ -171,17 +174,21 @@ impl GameService for Dispatcher {
                                 ymax: aabb.ymax,
                             })
                             .await
-                            .map(|res| res.into_inner().infos)
+                            .map(|res| {
+                                let infos = res.into_inner().infos;
+                                debug!("server_id:{} infos:{}", server.server_id, infos.len());
+                                infos
+                            })
                     })
             })
             .collect::<Vec<_>>();
-        let infos = futures::future::join_all(tasks)
+        let infos: Vec<_> = futures::future::join_all(tasks)
             .await
             .into_iter()
             .filter_map(|res| res.log_err().ok())
             .flatten()
             .collect();
-
+        debug!("OUT: {}", infos.len());
         Ok(Response::new(QueryReply { infos }))
     }
 

@@ -48,42 +48,15 @@ fn query(c: &mut Criterion, x: f32, y: f32) {
 }
 
 fn small_query(c: &mut Criterion) {
-    // query(c, 100.0, 100.0);
-    big_query();
+    query(c, 100.0, 100.0);
 }
 
-fn big_query() {
-    let x = WORLD_X_MAX;
-    let y = WORLD_Y_MAX;
-    let runtime = Builder::new_multi_thread().enable_all().build().unwrap();
-    let mut rpc_cli = runtime
-        .block_on(GameServiceClient::connect(format!(
-            "http://127.0.0.1:{DEFAULT_GAME_PORT}"
-        )))
-        .unwrap();
-    let now = std::time::Instant::now();
-    let res = runtime
-        .block_on(
-            rpc_cli.query(
-                QueryRequest {
-                    xmin: -x,
-                    xmax: x,
-                    ymin: -y,
-                    ymax: y,
-                }
-                .into_request(),
-            ),
-        )
-        .unwrap()
-        .into_inner()
-        .infos;
-    let elapsed = now.elapsed().as_millis();
-    println!("Query {} players in full map in {elapsed}ms", res.len());
+fn full_map_query(c: &mut Criterion) {
+    query(c, WORLD_X_MAX, WORLD_Y_MAX);
 }
 
 criterion_group! {
     name = querys;
-    // config = Criterion::default().measurement_time(std::time::Duration::from_secs(100));
     config = Criterion::default();
-    targets = small_query
+    targets = small_query,full_map_query
 }

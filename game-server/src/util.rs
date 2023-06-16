@@ -98,19 +98,20 @@ pub async fn start_map_server(zones: Vec<ZoneId>) -> Result<ServerInfo> {
     use tonic::transport::Server;
 
     let port = gen_port_no();
-    let addr = format!("127.0.0.1:{port}").parse().unwrap();
+    let addr = format!("127.0.0.1:{port}");
+    let socket = addr.parse().unwrap();
 
     let server_id = gen_server_id();
-    let map_server = map_server::server::MapServer::new(server_id);
+    let map_server = map_server::server::MapServer::new(server_id, addr.clone());
     tokio::spawn(
         Server::builder()
             .add_service(MapServiceServer::new(map_server.clone()))
             .add_service(GameServiceServer::new(map_server))
-            .serve(addr),
+            .serve(socket),
     );
     sleep(Duration::from_millis(100)).await;
 
-    let addr = format!("http://127.0.0.1:{port}");
+    let addr = format!("http://{}", addr);
     let map_cli = MapServiceClient::connect(addr.clone()).await?;
     let game_cli = GameServiceClient::connect(addr.clone()).await?;
 

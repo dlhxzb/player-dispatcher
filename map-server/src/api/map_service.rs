@@ -16,7 +16,7 @@ pub static mut SHUTDOWN_TX: OnceCell<oneshot::Sender<()>> = OnceCell::new();
 
 #[async_trait]
 impl MapService for MapServer {
-    #[instrument(skip(self))]
+    #[instrument(skip(self),fields(addr = %self.addr))]
     async fn export_player(&self, request: Request<ExportRequest>) -> RPCResult<()> {
         debug!("IN");
         let self = self.clone();
@@ -40,14 +40,14 @@ impl MapService for MapServer {
         .map_err_unknown()?
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self),fields(addr = %self.addr))]
     async fn import_player(&self, request: Request<PlayerInfo>) -> RPCResult<()> {
         debug!("IN");
         self.login(request).await
     }
 
     // 找到人数最多的zone，只有一个zone时从4个子zone中找
-    #[instrument(skip_all)]
+    #[instrument(skip_all,fields(addr = %self.addr))]
     async fn get_heaviest_zone_players(
         &self,
         request: Request<ZoneDepth>,
@@ -79,7 +79,7 @@ impl MapService for MapServer {
         })
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self),fields(addr = %self.addr))]
     async fn get_n_players(
         &self,
         request: Request<GetPlayersRequest>,
@@ -100,14 +100,14 @@ impl MapService for MapServer {
         .map_err_unknown()?
     }
 
-    #[instrument(skip_all)]
+    #[instrument(skip_all,fields(addr = %self.addr))]
     async fn get_overhead(&self, _request: Request<()>) -> RPCResult<OverheadReply> {
         let count = self.player_map.len() as u32;
         debug!(?count);
         Ok(Response::new(OverheadReply { count }))
     }
 
-    #[instrument(skip_all)]
+    #[instrument(skip_all,fields(addr = %self.addr))]
     async fn shutdown(&self, _request: Request<()>) -> RPCResult<()> {
         use tokio::time::{sleep, Duration};
 

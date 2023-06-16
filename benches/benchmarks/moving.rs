@@ -28,13 +28,15 @@ fn from_elem(c: &mut Criterion) {
             acc.fetch_add(1, Ordering::Relaxed);
             let mut rpc_cli = rpc_cli.clone();
             let player_id = rng.gen_range(1..max_player_id);
-            let dx = rng.gen_range(-5.0..5.0);
-            let dy = rng.gen_range(-5.0..5.0);
+            let dx = rng.gen_range(-500.0..500.0);
+            let dy = rng.gen_range(-500.0..500.0);
             async move {
-                rpc_cli
+                if let Err(e) = rpc_cli
                     .moving(MovingRequest { player_id, dx, dy }.into_request())
                     .await
-                    .unwrap();
+                {
+                    println!("{:?}", e);
+                }
             }
         });
     });

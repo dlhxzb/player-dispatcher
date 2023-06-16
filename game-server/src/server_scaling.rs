@@ -2,6 +2,7 @@ use crate::data::*;
 use crate::dispatcher::Dispatcher;
 use crate::util::*;
 
+use common::proto::game_service::QueryRequest;
 use common::proto::map_service::{ExportRequest, GetPlayersRequest, ZoneDepth, ZonePlayersReply};
 use common::*;
 
@@ -59,10 +60,11 @@ impl ServerScaling for Dispatcher {
             // 只管理一个叶子节点时，深度+1，分出4个叶子结点
             depth += 1;
         };
-        // 从server拆分出人数最多的zone
+        // 从server拆分出人数最多的zone。
+        // 注意：在获取之后，zone_server_map.insert之前，该服务器还可能被login。下面要loop transfer_players直至该zone无人为止
         let ZonePlayersReply {
             zone_id: new_zone_id,
-            player_ids,
+            mut player_ids,
         } = server
             .map_cli
             .clone()
@@ -109,9 +111,32 @@ impl ServerScaling for Dispatcher {
             self.zone_server_map.insert(zone_id, update_server.clone());
         });
 
-        // 用户导出
-        self.transfer_players(server, &new_server, &player_ids)
-            .await?;
+        let AABB {
+            xmin,
+            xmax,
+            ymin,
+            ymax,
+        } = AABB::from_zone_id(new_zone_id);
+        while !player_ids.is_empty() {
+            // 用户导出。loop transfer_players直至该zone无人为止
+            self.transfer_players(server, &new_server, &player_ids)
+                .await?;
+            player_ids = server
+                .game_cli
+                .clone()
+                .query(QueryRequest {
+                    xmin,
+                    xmax,
+                    ymin,
+                    ymax,
+                })
+                .await?
+                .into_inner()
+                .infos
+                .into_iter()
+                .map(|info| info.player_id)
+                .collect();
+        }
 
         // 完成后取消exporting_server设置
         self.zone_server_map.insert(

@@ -10,7 +10,7 @@ use tracing::*;
 
 #[async_trait]
 impl GameService for MapServer {
-    #[instrument(skip(self))]
+    #[instrument(skip(self),fields(addr = %self.addr))]
     async fn login(&self, request: Request<PlayerInfo>) -> RPCResult<()> {
         debug!("IN");
         let self = self.clone();
@@ -36,7 +36,7 @@ impl GameService for MapServer {
         .map_err_unknown()?
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self),fields(addr = %self.addr,))]
     async fn logout(&self, request: Request<PlayerIdRequest>) -> RPCResult<()> {
         debug!("IN");
         let self = self.clone();
@@ -45,7 +45,14 @@ impl GameService for MapServer {
             if let Some(entry) = self.player_map.remove(&id) {
                 let p = entry.value();
                 let grid = xy_to_grid(p.x, p.y);
-                self.grid_player_map.remove(&grid);
+                let entry = self.grid_player_map.get(&grid).ok_or_else(|| {
+                    Status::unknown(format!("player_id:{id} not in the grid_player_map"))
+                })?;
+                if entry.value().len() <= 1 {
+                    self.grid_player_map.remove(&grid);
+                } else {
+                    entry.value().remove(&id);
+                }
             };
             Ok(Response::new(()))
         })
@@ -53,7 +60,7 @@ impl GameService for MapServer {
         .map_err_unknown()?
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self),fields(addr = %self.addr))]
     async fn moving(&self, request: Request<MovingRequest>) -> RPCResult<Coord> {
         debug!("IN");
         let self = self.clone();
@@ -90,7 +97,7 @@ impl GameService for MapServer {
                 x: player.x,
                 y: player.y,
             };
-            debug!(?player);
+            debug!(?player, "OUT");
             // 更新player_map
             self.player_map.insert(player_id, player);
             Ok(Response::new(coord))
@@ -100,7 +107,7 @@ impl GameService for MapServer {
     }
 
     // 先找经过的grid，再逐点过滤
-    #[instrument(skip(self))]
+    #[instrument(skip_all,fields(addr = %self.addr, aabb = ?request.get_ref()))]
     async fn query(&self, request: Request<QueryRequest>) -> RPCResult<QueryReply> {
         debug!("IN");
         let self = self.clone();
@@ -117,8 +124,9 @@ impl GameService for MapServer {
                 ymin,
                 ymax,
             };
-            let grids = aabb.get_grids_in_aabb();
-            let infos = if grids.len() > self.player_map.len() {
+            if (xmax - xmin) as usize / GRID_LENGTH * (ymax - ymin) as usize / GRID_LENGTH
+                >= self.player_map.len()
+            {
                 // grid数量比用户还多，不用它过滤了，直接遍历所有用户
                 self.player_map
                     .iter()
@@ -130,8 +138,9 @@ impl GameService for MapServer {
                             None
                         }
                     })
-                    .collect()
+                    .collect::<Vec<_>>()
             } else {
+                let grids = aabb.get_grids_in_aabb();
                 grids
                     .par_iter()
                     .filter_map(|grid| {
@@ -149,15 +158,18 @@ impl GameService for MapServer {
                             None
                         }
                     })
-                    .collect()
-            };
-            Ok(Response::new(QueryReply { infos }))
+                    .collect::<Vec<_>>()
+            }
         })
         .await
-        .map_err_unknown()?
+        .map_err_unknown()
+        .map(|infos| {
+            debug!("OUT: {} players", infos.len());
+            Response::new(QueryReply { infos })
+        })
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self),fields(addr = %self.addr))]
     async fn aoe(&self, request: Request<AoeRequest>) -> RPCResult<()> {
         debug!("IN");
         let self = self.clone();

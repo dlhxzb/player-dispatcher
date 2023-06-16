@@ -9,7 +9,7 @@ use tonic::IntoRequest;
 #[tokio::test]
 async fn test_query() {
     crate::init_log();
-    let server = MapServer::new(1);
+    let server = MapServer::new(1, "127.0.0.1:5001".to_string());
     // (0,0) (1,1) (2,2) (3,3)
     let players = (0..4)
         .map(|i| PlayerInfo {

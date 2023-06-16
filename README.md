@@ -16,9 +16,11 @@ map-server:
 > RUST_LOG=WARN cargo t --features map_server_inside
   
 #### Benchmark
-1. 以内部map-server方式启动game-server
-> cargo run --release --bin game-server --features map_server_inside
+以内部map-server方式启动game-server
+> cargo run --release --bin game-server --features map_server_inside  
 > cargo bench
+
+[测试报告](BenchReport.md) 👈
 
 # 架构
 服务分两层：

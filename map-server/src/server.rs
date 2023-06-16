@@ -14,6 +14,7 @@ use std::sync::Arc;
 #[derive(Default)]
 pub struct InnerServer {
     pub server_id: ServerId,
+    pub addr: String,
     pub player_map: SkipMap<PlayerId, PlayerInfo>,
     pub grid_player_map: SkipMap<GridId, SkipSet<PlayerId>>, // (usize, usize): grid id
     pub export_addr_cli_cache: Mutex<Option<(String, MapServiceClient<Channel>)>>, // 导出用户时使用，导出完成清空。不会同时向两个服务器导出
@@ -32,10 +33,11 @@ impl Deref for MapServer {
 }
 
 impl MapServer {
-    pub fn new(server_id: ServerId) -> Self {
+    pub fn new(server_id: ServerId, addr: String) -> Self {
         Self {
             inner: InnerServer {
                 server_id,
+                addr,
                 ..Default::default()
             }
             .into(),
@@ -46,7 +48,7 @@ impl MapServer {
         self.player_map
             .get(player_id)
             .map(|entry| entry.value().clone())
-            .context("player no in cache")
+            .with_context(|| format!("player:{} no in cache", player_id))
     }
 
     pub async fn get_export_cli(&self, addr: String) -> Result<MapServiceClient<Channel>> {
