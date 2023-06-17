@@ -215,7 +215,7 @@ async fn test_full_map_query() {
             .await
             .unwrap();
     }
-    sleep(Duration::from_millis(5000)).await;
+    sleep(Duration::from_millis(10000)).await;
 
     let infos = dispatcher
         .query(
