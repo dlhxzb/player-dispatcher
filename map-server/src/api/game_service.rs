@@ -12,12 +12,9 @@ use tracing::*;
 impl GameService for MapServer {
     #[instrument(skip(self),fields(addr = %self.addr))]
     async fn login(&self, request: Request<PlayerInfo>) -> RPCResult<()> {
-        debug!("IN");
-        let self = self.clone();
-        tokio::spawn(async move {
-            let player = request.into_inner();
+        async fn inner_login(server: MapServer, player: PlayerInfo) -> RPCResult<()> {
             let player_id = player.player_id;
-            if self.player_map.contains_key(&player.player_id) {
+            if server.player_map.contains_key(&player.player_id) {
                 return Err(Status::already_exists(format!(
                     "player_id:{} was already login",
                     player.player_id
@@ -25,48 +22,54 @@ impl GameService for MapServer {
             }
 
             let grid = xy_to_grid(player.x, player.y);
-            self.grid_player_map
+            server
+                .grid_player_map
                 .get_or_insert_with(grid, Default::default)
                 .value()
                 .insert(player_id);
-            self.player_map.insert(player_id, player);
+            server.player_map.insert(player_id, player);
             Ok(Response::new(()))
-        })
-        .await
-        .map_err_unknown()?
+        }
+
+        debug!("IN");
+        let res = tokio::spawn(inner_login(self.clone(), request.into_inner()))
+            .await
+            .map_err_unknown()?;
+        debug!(?res, "OUT");
+        res
     }
 
     #[instrument(skip(self),fields(addr = %self.addr,))]
     async fn logout(&self, request: Request<PlayerIdRequest>) -> RPCResult<()> {
-        debug!("IN");
-        let self = self.clone();
-        tokio::spawn(async move {
-            let id = request.into_inner().player_id;
-            if let Some(entry) = self.player_map.remove(&id) {
+        async fn inner_logout(server: MapServer, id: PlayerId) -> RPCResult<()> {
+            if let Some(entry) = server.player_map.remove(&id) {
                 let p = entry.value();
                 let grid = xy_to_grid(p.x, p.y);
-                let entry = self.grid_player_map.get(&grid).ok_or_else(|| {
+                let entry = server.grid_player_map.get(&grid).ok_or_else(|| {
                     Status::unknown(format!("player_id:{id} not in the grid_player_map"))
                 })?;
                 if entry.value().len() <= 1 {
-                    self.grid_player_map.remove(&grid);
+                    server.grid_player_map.remove(&grid);
                 } else {
                     entry.value().remove(&id);
                 }
             };
             Ok(Response::new(()))
-        })
-        .await
-        .map_err_unknown()?
+        }
+
+        debug!("IN");
+        let res = tokio::spawn(inner_logout(self.clone(), request.into_inner().player_id))
+            .await
+            .map_err_unknown()?;
+        debug!(?res, "OUT");
+        res
     }
 
-    #[instrument(skip(self),fields(addr = %self.addr))]
+    #[instrument(skip(self),fields(addr = %self.addr, player_id = %request.get_ref().player_id))]
     async fn moving(&self, request: Request<MovingRequest>) -> RPCResult<Coord> {
-        debug!("IN");
-        let self = self.clone();
-        tokio::spawn(async move {
-            let MovingRequest { player_id, dx, dy } = request.into_inner();
-            let mut player = self.get_player_info(&player_id).map_err_unknown()?;
+        async fn inner_moving(server: MapServer, request: MovingRequest) -> RPCResult<Coord> {
+            let MovingRequest { player_id, dx, dy } = request;
+            let mut player = server.get_player_info(&player_id).map_err_unknown()?;
             let x0 = player.x;
             let y0 = player.y;
             player.x += dx;
@@ -76,18 +79,19 @@ impl GameService for MapServer {
             let target_grid = xy_to_grid(player.x, player.y);
             // 跨越grid，先删后插
             if target_grid != origin_grid {
-                let entry = self
+                let entry = server
                     .grid_player_map
                     .get(&origin_grid)
                     .ok_or("Not in grid_player_map")
                     .map_err_unknown()?;
                 if entry.value().len() <= 1 {
                     // set剩1个直接删set
-                    self.grid_player_map.remove(&origin_grid);
+                    server.grid_player_map.remove(&origin_grid);
                 } else {
                     entry.value().remove(&player_id);
                 }
-                self.grid_player_map
+                server
+                    .grid_player_map
                     .get_or_insert_with(target_grid, Default::default)
                     .value()
                     .insert(player_id);
@@ -97,27 +101,29 @@ impl GameService for MapServer {
                 x: player.x,
                 y: player.y,
             };
-            debug!(?player, "OUT");
             // 更新player_map
-            self.player_map.insert(player_id, player);
+            server.player_map.insert(player_id, player);
             Ok(Response::new(coord))
-        })
-        .await
-        .map_err_unknown()?
+        }
+
+        debug!("IN");
+        let res = tokio::spawn(inner_moving(self.clone(), request.into_inner()))
+            .await
+            .map_err_unknown()?;
+        debug!(?res, "OUT");
+        res
     }
 
     // 先找经过的grid，再逐点过滤
     #[instrument(skip_all,fields(addr = %self.addr, aabb = ?request.get_ref()))]
     async fn query(&self, request: Request<QueryRequest>) -> RPCResult<QueryReply> {
-        debug!("IN");
-        let self = self.clone();
-        tokio::spawn(async move {
+        async fn inner_query(server: MapServer, request: QueryRequest) -> Vec<PlayerInfo> {
             let QueryRequest {
                 xmin,
                 xmax,
                 ymin,
                 ymax,
-            } = request.into_inner();
+            } = request;
             let aabb = AABB {
                 xmin,
                 xmax,
@@ -125,10 +131,11 @@ impl GameService for MapServer {
                 ymax,
             };
             if (xmax - xmin) as usize / GRID_LENGTH * (ymax - ymin) as usize / GRID_LENGTH
-                >= self.player_map.len()
+                >= server.player_map.len()
             {
                 // grid数量比用户还多，不用它过滤了，直接遍历所有用户
-                self.player_map
+                server
+                    .player_map
                     .iter()
                     .filter_map(|entry| {
                         let p = entry.value();
@@ -144,12 +151,13 @@ impl GameService for MapServer {
                 grids
                     .par_iter()
                     .filter_map(|grid| {
-                        self.grid_player_map
+                        server
+                            .grid_player_map
                             .get(grid)
                             .map(|entry| entry.value().iter().map(|id| *id).collect::<Vec<_>>())
                     })
                     .flatten()
-                    .filter_map(|id| self.player_map.get(&id))
+                    .filter_map(|id| server.player_map.get(&id))
                     .filter_map(|entry| {
                         let p = entry.value();
                         if aabb.contains(p.x, p.y) {
@@ -160,25 +168,25 @@ impl GameService for MapServer {
                     })
                     .collect::<Vec<_>>()
             }
-        })
-        .await
-        .map_err_unknown()
-        .map(|infos| {
-            debug!("OUT: {} players", infos.len());
-            Response::new(QueryReply { infos })
-        })
+        }
+
+        debug!("IN");
+        let res = tokio::spawn(inner_query(self.clone(), request.into_inner()))
+            .await
+            .map_err_unknown()
+            .map(|infos| Response::new(QueryReply { infos }));
+        debug!(?res, "OUT");
+        res
     }
 
     #[instrument(skip(self),fields(addr = %self.addr))]
     async fn aoe(&self, request: Request<AoeRequest>) -> RPCResult<()> {
-        debug!("IN");
-        let self = self.clone();
-        tokio::spawn(async move {
+        async fn inner_aoe(server: MapServer, request: AoeRequest) -> RPCResult<()> {
             let AoeRequest {
                 player_id,
                 coord: Some(Coord { x, y }),
                 radius,
-            } = request.into_inner() else {
+            } = request else {
                 return Err(Status::data_loss("Coord { x, y }"));
             };
             AABB {
@@ -190,7 +198,8 @@ impl GameService for MapServer {
             .get_grids_in_aabb()
             .into_par_iter()
             .filter_map(|grid| {
-                self.grid_player_map
+                server
+                    .grid_player_map
                     .get(&grid)
                     .map(|entry| entry.value().iter().map(|id| *id).collect::<Vec<_>>())
             })
@@ -198,7 +207,10 @@ impl GameService for MapServer {
             .filter_map(|id| {
                 // 过滤掉自己
                 if id != player_id {
-                    self.player_map.get(&id).map(|entry| entry.value().clone())
+                    server
+                        .player_map
+                        .get(&id)
+                        .map(|entry| entry.value().clone())
                 } else {
                     None
                 }
@@ -206,13 +218,18 @@ impl GameService for MapServer {
             .for_each(|mut p| {
                 if (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y) <= radius * radius {
                     p.money += AOE_MONEY;
-                    self.player_map.insert(p.player_id, p);
+                    server.player_map.insert(p.player_id, p);
                 }
             });
 
             Ok(Response::new(()))
-        })
-        .await
-        .map_err_unknown()?
+        }
+
+        debug!("IN");
+        let res = tokio::spawn(inner_aoe(self.clone(), request.into_inner()))
+            .await
+            .map_err_unknown()?;
+        debug!(?res, "OUT");
+        res
     }
 }

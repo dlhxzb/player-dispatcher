@@ -18,27 +18,28 @@ use std::collections::HashMap;
 impl GameService for Dispatcher {
     #[instrument(skip(self))]
     async fn login(&self, request: Request<PlayerInfo>) -> RPCResult<()> {
-        debug!("IN");
-        let player = request.into_inner();
-        let player_id = player.player_id;
-        let self = self.clone();
-        async move {
+        async fn inner_login(dsp: Dispatcher, player: PlayerInfo) -> RPCResult<()> {
             check_xy_range(player.x, player.y)?;
-            if self.player_map.contains_key(&player.player_id) {
+            if dsp.player_map.contains_key(&player.player_id) {
                 return Err(Status::already_exists(format!(
                     "player_id:{} was already login",
                     player.player_id
                 )));
             }
-            let server = self.get_server_of_coord(player.x, player.y).1.server;
+            let server = dsp.get_server_of_coord(player.x, player.y).1.server;
 
             server.game_cli.clone().login(player.clone()).await?;
-            self.player_map
-                .insert(player_id, (server, player.x, player.y));
+            dsp.player_map
+                .insert(player.player_id, (server, player.x, player.y));
             Ok(Response::new(()))
         }
-        .via_g(player_id)
-        .await
+
+        debug!("IN");
+        let player = request.into_inner();
+        let player_id = player.player_id;
+        let res = inner_login(self.clone(), player).via_g(player_id).await;
+        debug!(?res, "OUT");
+        res
     }
 
     /// 根据正方形四个顶点，查找出对应的最多4个servers，给每个都发送aoe请求
@@ -75,20 +76,16 @@ impl GameService for Dispatcher {
             });
         futures::future::join_all(tasks).await;
 
+        debug!("OUT");
         Ok(Response::new(()))
     }
 
     // 移动目标在当前服务器之外的要导出用户到目标服务器
     #[instrument(skip(self))]
     async fn moving(&self, request: Request<MovingRequest>) -> RPCResult<Coord> {
-        debug!("IN");
-        let request = request.into_inner();
-        let MovingRequest { player_id, dx, dy } = request.clone();
-        let self = self.clone();
-
-        // ert: serialized by player_id
-        async move {
-            let (current_server, x, y) = self.get_server_of_player(&player_id).map_err_unknown()?;
+        async fn inner_moving(dsp: Dispatcher, request: MovingRequest) -> RPCResult<Coord> {
+            let MovingRequest { player_id, dx, dy } = request.clone();
+            let (current_server, x, y) = dsp.get_server_of_player(&player_id).map_err_unknown()?;
 
             let target_x = x + dx;
             let target_y = y + dy;
@@ -100,7 +97,7 @@ impl GameService for Dispatcher {
                     server: target_server,
                     ..
                 },
-            ) = self.get_server_of_coord(target_x, target_y);
+            ) = dsp.get_server_of_coord(target_x, target_y);
             let mut coord = Coord {
                 x: target_x,
                 y: target_y,
@@ -126,12 +123,17 @@ impl GameService for Dispatcher {
                     .await?
                     .into_inner();
             }
-            self.player_map
+            dsp.player_map
                 .insert(player_id, (target_server, coord.x, coord.y));
             Ok(Response::new(coord))
         }
-        .via_g(player_id)
-        .await
+
+        debug!("IN");
+        let request = request.into_inner();
+        let player_id = request.player_id;
+        let res = inner_moving(self.clone(), request).via_g(player_id).await;
+        debug!(?res, "OUT");
+        res
     }
 
     #[instrument(skip(self))]
