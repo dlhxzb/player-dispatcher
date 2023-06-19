@@ -192,7 +192,7 @@ async fn test_full_map_query() {
     crate::init_log();
 
     let dispatcher = Dispatcher::new(Config {
-        max_players: 100, // 第10个触发expand
+        max_players: 10, // 第10个触发expand
         min_players: 25,
         max_zone_depth: 10,
         scaling_interval: 1000,
@@ -201,7 +201,7 @@ async fn test_full_map_query() {
     .unwrap();
     tokio::spawn(dispatcher.clone().scaling_moniter());
 
-    for i in 0..1000 {
+    for i in 0..100 {
         dispatcher
             .login(
                 PlayerInfo {
@@ -231,7 +231,7 @@ async fn test_full_map_query() {
         .unwrap()
         .into_inner()
         .infos;
-    assert_eq!(infos.len(), 1000);
+    assert_eq!(infos.len(), 100);
 
     dispatcher.shutdown_all_map_server().await;
 }

@@ -10,4 +10,5 @@ criterion_main! {
     benchmarks::login::login,
     benchmarks::moving::moving,
     benchmarks::query::querys,
+    benchmarks::aoe::aoe,
 }

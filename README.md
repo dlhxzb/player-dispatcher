@@ -63,9 +63,9 @@ map-server:
 - 其它
   - [x] rayon加速
   - [x] config
-  - [ ] test  `doing`
+  - [x] test
   - [ ] example
-  - [ ] benchmark  `doing`
+  - [x] benchmark
   - [x] CI（包括发布docker image）
   - [ ] 扩容时在程序内启动image
   - [ ] 将边缘区域用户同步到其它服务器，提高用户在服务器间移动的性能

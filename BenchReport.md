@@ -1,3 +1,7 @@
+# Overview
+由于测试在单机上，而非云上，所以无法测试出弹性伸缩带来的性能提升，测试结果仅供参考。
+> Xeon E5-2690, CPUs:16. Memory: 64G
+
 # Login
 > Logined 23341 players in 11949ms, RPS: 1953
 
@@ -73,3 +77,8 @@
 > Query x:1000000,y:1000000 655 times in 10851ms, RPS: 60
 
 ![query2](imgs/bench_query2.png)
+
+# Aoe
+> Aoe 23341 times in 12152ms, RPS: 1920
+
+![Alt text](imgs/bench_aoe.png)
