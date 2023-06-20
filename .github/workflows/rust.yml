@@ -30,18 +30,18 @@ jobs:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Build and push map-server Docker image
-      uses: docker/build-push-action@v3
-      with:
-        file: map-server/Dockerfile
-        context: .
-        push: true
-        tags: dlhxzb/map-server:latest
-
-    # - name: Build and push game-server Docker image
+    # - name: Build and push map-server Docker image
     #   uses: docker/build-push-action@v3
     #   with:
-    #     file: game-server/Dockerfile
+    #     file: map-server/Dockerfile
     #     context: .
     #     push: true
-    #     tags: dlhxzb/game-server:latest
+    #     tags: dlhxzb/map-server:latest
+
+    - name: Build and push game-server Docker image
+      uses: docker/build-push-action@v3
+      with:
+        file: game-server/Dockerfile
+        context: .
+        push: true
+        tags: dlhxzb/game-server:latest

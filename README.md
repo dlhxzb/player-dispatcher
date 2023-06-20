@@ -1,8 +1,10 @@
 # Usage
-#### game-server以binary形式启动map-server
-> MAP_SERVER_BIN_PATH="./target/debug/map-server" cargo r --bin game-server
+#### docker启动
+>  docker run -e "MAP_SERVER_BIN_PATH=./map-server" dlhxzb/game-server:latest
+  
 Optinal env:
 game-server:
+* GAME_SERVER_PORT: game service rpc端口 default:4880
 * GAME_MAX_PLAYERS: 扩容阈值 default:1000
 * GAME_MIN_PLAYERS: 缩容阈值 default:250
 * GAME_MAX_ZONE_DEPTH: 四叉树最大高度 default:10
@@ -12,6 +14,8 @@ game-server:
 map-server:
 * MAP_SERVER_PORT: map service端口 default:5000
 
+#### game-server以binary形式启动map-server
+> MAP_SERVER_BIN_PATH="./target/debug/map-server" cargo r --bin game-server
 #### game-server以内部对象形式调用map-server，用于测试
 > RUST_LOG=WARN cargo t --features map_server_inside
   
