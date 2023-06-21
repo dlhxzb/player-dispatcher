@@ -1,0 +1,3 @@
+target/
+common/src/proto/*
+!common/src/proto/mod.rs

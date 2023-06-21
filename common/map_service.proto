@@ -1,0 +1,40 @@
+syntax = "proto3";
+package map_service;
+import "google/protobuf/empty.proto";
+import "game_service.proto";
+
+service MapService {
+    rpc ExportPlayer (ExportRequest) returns (google.protobuf.Empty);
+    rpc ImportPlayer (game_service.PlayerInfo) returns (google.protobuf.Empty);
+    rpc GetHeaviestZonePlayers (ZoneDepth) returns (ZonePlayersReply);
+    rpc GetNPlayers (GetPlayersRequest) returns (GetPlayersReply);
+    rpc GetOverhead (google.protobuf.Empty) returns (OverheadReply);
+    rpc Shutdown (google.protobuf.Empty) returns (google.protobuf.Empty);
+}
+
+message ExportRequest {
+    uint64 player_id = 1;
+    string addr = 2;
+    game_service.Coord coord = 3;  // 扩缩容时为空（不需要改变坐标）；玩家移动出界时，要传递新坐标
+}
+
+message ZoneDepth {
+    uint32 depth = 1;
+}
+
+message ZonePlayersReply {
+    uint64 zone_id = 1;
+    repeated uint64 player_ids = 2;
+}
+
+message GetPlayersRequest {
+    uint32 n = 1;
+}
+
+message GetPlayersReply {
+    repeated uint64 player_ids = 1;
+}
+
+message OverheadReply {
+    uint32 count = 1;
+}
